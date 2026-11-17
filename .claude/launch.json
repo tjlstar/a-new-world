@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sketch-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "const http=require('http'),fs=require('fs'),path=require('path'),root=process.cwd();http.createServer((q,s)=>{let p=decodeURIComponent(q.url.split('?')[0]);if(p==='/')p='/岛屿草图.html';const f=path.join(root,p);if(!f.startsWith(root)){s.writeHead(403);return s.end();}fs.readFile(f,(e,d)=>{if(e){s.writeHead(404);return s.end('not found');}const t={'.html':'text/html; charset=utf-8','.svg':'image/svg+xml'}[path.extname(f)]||'application/octet-stream';s.writeHead(200,{'Content-Type':t,'Cache-Control':'no-store'});s.end(d);});}).listen(4173,'127.0.0.1');"
+      ],
+      "port": 4173
+    },
+    {
+      "name": "island-3d",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["三维/server.mjs"],
+      "port": 4174
+    }
+  ]
+}

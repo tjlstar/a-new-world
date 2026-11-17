@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>岛屿基地 · 三维漫游</title>
+<style>
+  :root { --ink: #e9f0f4; --dim: #a9bac6; --panel: rgba(12, 22, 30, .78); --line: rgba(255, 255, 255, .16); --accent: #ffc56b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c161e; color: var(--ink);
+    font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif; }
+  canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; backdrop-filter: blur(6px); }
+  #hud { position: fixed; left: 12px; top: 12px; padding: 8px 12px; font-size: 13px; line-height: 1.7; pointer-events: none; min-width: 230px; }
+  #hud b { color: var(--accent); font-weight: 600; }
+  #hud .row { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
+  #hud .row span:first-child { color: var(--dim); }
+  #help { position: fixed; left: 12px; bottom: 12px; padding: 8px 12px; font-size: 12px; line-height: 1.75; color: var(--dim); pointer-events: none; max-width: 330px; }
+  #help kbd { display: inline-block; min-width: 18px; padding: 0 5px; margin: 0 1px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); font: inherit; text-align: center; }
+  #spots { position: fixed; right: 12px; top: 12px; padding: 8px; display: flex; flex-direction: column; gap: 4px; max-height: calc(100% - 220px); overflow: auto; }
+  #spots .hd { font-size: 12px; color: var(--dim); padding: 0 4px 2px; }
+  #spots button { all: unset; cursor: pointer; font-size: 12.5px; padding: 3px 8px; border-radius: 5px; display: flex; gap: 8px; }
+  #spots button:hover { background: rgba(255, 255, 255, .12); }
+  #spots button kbd { color: var(--accent); min-width: 12px; font: inherit; }
+  #map { position: fixed; right: 12px; bottom: 12px; padding: 5px; line-height: 0; }
+  #map canvas { border-radius: 4px; }
+  #cross { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255, 255, 255, .7); box-shadow: 0 0 0 1px rgba(0, 0, 0, .4); pointer-events: none; }
+  #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 16, 22, .62); z-index: 5; }
+  #start .box { width: min(560px, calc(100% - 32px)); padding: 26px 30px; }
+  #start h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: 1px; }
+  #start p.lead { margin: 0 0 16px; color: var(--dim); font-size: 14px; }
+  #start table { border-collapse: collapse; font-size: 13.5px; width: 100%; margin-bottom: 18px; }
+  #start td { padding: 3px 0; vertical-align: top; }
+  #start td:first-child { color: var(--accent); white-space: nowrap; padding-right: 18px; }
+  #go { all: unset; cursor: pointer; display: inline-block; padding: 9px 26px; border-radius: 6px; background: var(--accent); color: #1a1408; font-weight: 700; font-size: 15px; }
+  #go[disabled] { opacity: .5; cursor: progress; }
+  #status { margin-left: 14px; font-size: 13px; color: var(--dim); }
+  #toast { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); padding: 6px 16px; font-size: 14px; opacity: 0; transition: opacity .35s; pointer-events: none; }
+  #toast.on { opacity: 1; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="cross"></div>
+
+<div id="hud" class="panel">
+  <div class="row"><span>位置</span><b id="h-pos">—</b></div>
+  <div class="row"><span>海拔</span><b id="h-alt">—</b></div>
+  <div class="row"><span>朝向</span><b id="h-dir">—</b></div>
+  <div class="row"><span>方式</span><b id="h-mode">步行</b></div>
+  <div class="row"><span>所在</span><b id="h-place">—</b></div>
+</div>
+
+<div id="help" class="panel">
+  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · 鼠标转向 · <kbd>Shift</kbd> 加速 · <kbd>空格</kbd> 跳 / 上升<br>
+  <kbd>F</kbd> 步行 / 飞行 · <kbd>C</kbd> 下降 · <kbd>1</kbd>–<kbd>0</kbd> 传送<br>
+  <kbd>E</kbd> / <kbd>Q</kbd> 崖宅电梯:上 / 下,在门口按 <kbd>E</kbd> 呼叫<br>
+  <kbd>L</kbd> 地名 · <kbd>H</kbd> 幻域光幕 · <kbd>M</kbd> 小地图 · <kbd>Esc</kbd> 释放鼠标
+</div>
+
+<div id="spots" class="panel"><div class="hd">传送点</div></div>
+<div id="map" class="panel"><canvas id="mini" width="244" height="177"></canvas></div>
+<div id="toast" class="panel"></div>
+
+<div id="start">
+  <div class="box panel">
+    <h1>岛屿基地 · 三维漫游</h1>
+    <p class="lead">依据《岛屿设定.md》2.3 与草图数据生成。可以在岛上步行,也可以飞起来看全貌。</p>
+    <table>
+      <tr><td>W A S D</td><td>前后左右移动(方向键也可以)</td></tr>
+      <tr><td>鼠标</td><td>转动视角。点击画面后鼠标会被锁定,按 Esc 释放;未锁定时可以按住左键拖动</td></tr>
+      <tr><td>Shift</td><td>加速(奔跑 / 高速飞行)</td></tr>
+      <tr><td>空格 / C</td><td>步行时跳跃;飞行时上升 / 下降</td></tr>
+      <tr><td>F</td><td>在步行和飞行之间切换</td></tr>
+      <tr><td>1 – 0</td><td>传送到十个预设地点,右上角也可以点选</td></tr>
+      <tr><td>E / Q</td><td>崖宅里的电梯:在轿厢里上 / 下一层,在门口按 E 呼叫</td></tr>
+      <tr><td>L / H / M</td><td>显示或隐藏地名、幻域光幕、小地图</td></tr>
+    </table>
+    <button id="go" disabled>正在载入…</button><span id="status"></span>
+  </div>
+</div>
+
+<script type="module" src="./main.js"></script>
+</body>
+</html>
