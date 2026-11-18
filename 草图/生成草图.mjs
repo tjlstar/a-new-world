@@ -1,1204 +1,1759 @@
-// 按《岛屿设定.md》生成草图。运行: node 草图/生成草图.mjs
-import { writeFileSync } from 'node:fs';
-import { deflateSync } from 'node:zlib';
+// 生成草图.mjs — 按《岛屿设定.md》3.1 生成四张 SVG 草图、岛屿草图.html 与 三维/data/*
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, '..');
+const root = dirname(here);
 
-// ═════════ 设定数据(公里,x 向东,y 向北;高度为米) ═════════
-// 岸线控制点,顺时针。第三项是该处悬崖高度,只有南岸悬崖段才有。
-const CTRL = [
-  [-2.45, 0.25, 10], [-2.25, 0.8], [-1.85, 1.05], [-1.55, 1.5], [-1.15, 1.85], [-0.9, 1.7], [-1.1, 1.3], [-1.0, 0.95],
-  [-0.6, 0.7], [0.0, 0.5], [0.5, 0.48], [0.95, 0.62], [1.2, 0.85], [1.5, 0.9], [1.9, 0.7],
-  [2.2, 0.3, 25], [2.1, -0.15, 45], [1.88, -0.44, 18], [1.60, -0.38, 8], [1.42, -0.66, 58], [1.26, -0.74, 10], [1.05, -1.2, 110],
-  [0.7, -1.0, 120], [0.5, -1.12, 150], [0.24, -0.78, 125], [0.04, -1.05, 170], [-0.25, -1.45, 210],
-  [-0.6, -1.2, 180], [-0.95, -0.75, 130], [-1.3, -1.0, 140], [-1.75, -1.15, 145], [-2.05, -0.7, 100],
-  [-2.3, -0.35, 40], [-2.42, -0.08, 10],
-];
-const ROCKY = new Set([17, 18, 32, 33]); // 南岸的礁石滩段(东礁滩与西礁滩)
-const segKind = i => (ROCKY.has(i) ? 'k' : i >= 15 ? 'c' : i >= 8 && i <= 11 ? 'b' : 'r'); // c 悬崖 k 礁石滩 b 沙滩 r 岩岸
-const ISLET = { x: 2.78, y: 0.02, rx: 0.17, ry: 0.1, rot: 0.6 };
-// 山脊骨架:每条由 [x, y, 增高, 横向宽度] 控制点样条插值而成,构成弧形分水岭与向北辐射的支脉
-const RIDGES = [
-  // 南岸主崖山脊(古火山残壁分水岭)
-  [[-1.85, -0.95, 18, 0.22], [-1.35, -0.88, 16, 0.2], [-0.95, -0.65, 8, 0.18], [-0.30, -1.22, 14, 0.22], [0.25, -0.68, 8, 0.18], [1.02, -1.02, 18, 0.22], [1.42, -0.58, 16, 0.16]],
-  // 西岬龙骨(西峰—鞍部—岬丘—西岬尖)
-  [[-1.65, -0.52, 24, 0.24], [-1.42, 0.05, 24, 0.22], [-1.18, 0.65, 18, 0.17], [-1.24, 1.12, 34, 0.17], [-1.30, 1.42, 42, 0.17], [-1.12, 1.78, 14, 0.12]],
-  // 镜湖西脊(分隔西沟与镜湖湖盆)
-  [[-1.02, -0.62, 14, 0.18], [-1.02, -0.15, 22, 0.18], [-0.88, 0.38, 16, 0.15]],
-  // 镜湖南—东缘岩坎台地(支撑湖盆东北缘天然岩坎至帘瀑顶缘 ~63m)
-  [[-0.35, 0.08, 12, 0.20], [-0.12, 0.12, 20, 0.18], [0.02, 0.14, 22, 0.15]],
-  // 望海脊(分隔白水河中谷与东峡谷—东沟)
-  [[0.32, -0.62, 14, 0.20], [0.55, -0.22, 26, 0.22], [0.68, 0.22, 16, 0.18]],
-  // 东断块鞍部(支撑东峡谷两壁及分水鞍部基底高度)
-  [[0.96, -0.65, 36, 0.28], [1.10, -0.35, 38, 0.30], [1.10, -0.10, 36, 0.28]],
-  // 东丘支脉(东崖肩—东丘—东岬)
-  [[1.42, -0.55, 24, 0.20], [1.48, -0.10, 32, 0.24], [1.46, 0.28, 36, 0.24], [1.52, 0.78, 16, 0.16]],
-];
-const HILLS = [ // 独立山头叠加(与山脊骨架配合)与标注名
-  [-1.6, -0.5, 20, 0.26, '西峰'], [-1.3, 1.42, 12, 0.18, '岬丘'], [1.45, 0.25, 15, 0.26, '东丘'],
-  [0.55, -0.22, 8, 0.2, '望海脊'],
-];
-const LAKE = { x: -0.5, y: -0.05, rx: 0.32, ry: 0.19, rot: -0.25, depth: 18 };
-const MEADOW = { x: -0.3, y: -0.8, rx: 0.27, ry: 0.16, rot: 0.2 };
-const RIVER = [[-0.2, 0.02], [-0.05, 0.12], [0.05, 0.2], [0.12, 0.3], [0.3, 0.36], [0.28, 0.45], [0.36, 0.5]];
-const FALLS = [0.05, 0.2];
-const SCARP = [[-0.78, 0.19], [-0.48, 0.23], [-0.15, 0.23], [0.05, 0.19], [0.26, 0.08], [0.46, -0.05]]; // 镜湖北缘天然岩坎
-const FEEDERS = [[[-1.35, -0.5], [-1.05, -0.3], [-0.8, -0.12]], [[-0.55, -0.55], [-0.6, -0.35], [-0.55, -0.22]]];
-const GULLIES = [
-  [[-1.5, -0.6], [-1.4, -0.2], [-1.2, 0.2], [-1.05, 0.55], [-0.85, 0.83]],
-  [[1.26, -0.76], [1.18, -0.5], [1.10, -0.15], [1.13, 0.12], [1.05, 0.45], [1.1, 0.78]],
-];
-const VILLA_X = -0.3, SECTION_X = -0.35;
-const TUNNELS = [
-  { from: [-0.46, -0.76], aim: [-0.95, -0.75], z: 70, name: '西发射口' },
-  { from: [-0.15, -0.76], aim: [0.24, -0.8], z: 60, name: '东发射口' },
-  { from: [-0.32, -0.98], aim: [-0.35, -1.46], z: 65, name: '南发射口' },
-];
-const HANGAR_PLAN = [[-0.50, -0.98], [-0.14, -1.02], [-0.09, -0.64], [-0.45, -0.60]]; // 机库洞厅地下投影(风草甸正下方)
-const SILOS = [[-0.42, -0.83], [-0.28, -0.76], [-0.17, -0.86]]; // 机库顶部发射井
-const CAMPS = [[-0.3, -0.42], [-1.02, 0.2], [0.55, 0.02]]; // 林中营房
-const HULL_PLAN = [[-0.52, -1.44], [-0.78, -0.95], [-1.02, -0.55], [-0.82, -0.28], [-0.25, -0.24], [0.32, -0.26], [0.65, -0.52], [0.55, -0.92], [0.35, -0.92], [-0.15, -1.42]];
-const SALLY = [[-1.42, -0.25], [-1.1, 0.42], [0.1, 0.27], [0.3, 0.4], [1.1, -0.32], [1.08, 0.4]];
-const WEST_GATE = { aim: [-2.05, -0.7], via: [[-1.3, -0.6], [-0.75, -0.66]], end: [-0.45, -0.95], depth: 60 };
-const STACKS = [[-0.12, -1.63, 0.03], [-0.42, -1.6, 0.018], [1.16, -1.4, 0.026], [-1.9, -1.3, 0.024], [-1.68, -1.33, 0.016], [1.95, -0.62, 0.02]];
-const HEADLANDS = [['主崖岬', -0.25, -1.45, 209], ['西崖角', -1.75, -1.15, 145], ['东南崖角', 1.05, -1.2, 110]];
-// 主崖剖面(真实比例):s 为自海岸线向内陆的水平距离(米),z 为海拔
-const CLIFF = [[0, 0], [12, 8], [22, 20], [29.5, 48], [45.5, 57], [53.8, 88], [73.8, 99.5], [79.8, 122], [91.8, 129], [93.2, 145], [89, 160], [85, 172], [88, 180], [96, 188], [110, 198], [135, 205], [165, 209]];
-const APRON = [[-1400, -770], [-950, -650], [-600, -450], [-300, -270], [-130, -140], [-112, -80], [-100, -45], [-90, -30], [-60, -14], [-30, -4], [0, 0]];
+// ═════════ 基础数学与噪声 ═════════
+const TAU = Math.PI * 2;
+const clamp = (v, a = 0, b = 1) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const r = (n, d = 1) => Number(n.toFixed(d));
 
-// ═════════ 工具 ═════════
-const r = n => Math.round(n * 10) / 10;
-const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
-const sstep = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
-const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
-const rgb = c => `rgb(${c.map(v => Math.round(clamp(v, 0, 255))).join(',')})`;
-const range = (a, b, s) => { const out = []; for (let v = a; v <= b + 1e-9; v += s) out.push(v); return out; };
-function rng(seed) {
+function mulberry32(seed) {
   let a = seed >>> 0;
-  return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-const hash = (i, j) => { const n = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return n - Math.floor(n); };
-function vnoise(x, y) {
-  const i = Math.floor(x), j = Math.floor(y), u = x - i, v = y - j, fx = u * u * (3 - 2 * u), fy = v * v * (3 - 2 * v);
-  const a = hash(i, j), b = hash(i + 1, j), c = hash(i, j + 1), d = hash(i + 1, j + 1);
-  return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
-}
-function fbm(x, y, oct = 4) { let s = 0, a = 0.5, f = 1; for (let o = 0; o < oct; o++) { s += a * (vnoise(x * f, y * f) - 0.5); a *= 0.5; f *= 2; } return s; }
-const bez = (p1, c1, c2, p2, t) => { const u = 1 - t; return [0, 1].map(k => u * u * u * p1[k] + 3 * u * u * t * c1[k] + 3 * u * t * t * c2[k] + t * t * t * p2[k]); };
-function spline(pts, closed, per = 12) {
-  const n = pts.length, out = [], at = i => (closed ? pts[(i + n) % n] : pts[clamp(i, 0, n - 1)]);
-  for (let i = 0; i < (closed ? n : n - 1); i++) {
-    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    for (let k = 0; k < per; k++) out.push(bez(p1, c1, c2, p2, k / per));
-  }
-  if (!closed) out.push(pts[n - 1]);
-  return out;
-}
-function blob({ x, y, rx, ry, rot = 0 }, seed, n = 48, rough = 1) {
-  const g = rng(seed), ph = [g() * 6.28, g() * 6.28, g() * 6.28];
-  return Array.from({ length: n }, (_, k) => {
-    const a = (k / n) * 2 * Math.PI;
-    const m = 1 + rough * (0.18 * Math.sin(2 * a + ph[0]) + 0.12 * Math.sin(3 * a + ph[1]) + 0.07 * Math.sin(5 * a + ph[2]));
-    const px = rx * m * Math.cos(a), py = ry * m * Math.sin(a), c = Math.cos(rot), s = Math.sin(rot);
-    return [x + px * c - py * s, y + px * s + py * c];
-  });
-}
-const pip = (poly, x, y) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
-const dist2Pts = (pts, x, y) => { let m = Infinity; for (const p of pts) { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < m) m = d; } return m; };
-const lerpLine = (pts, v) => { if (v <= pts[0][0]) return pts[0][1]; for (let i = 0; i + 1 < pts.length; i++) if (v <= pts[i + 1][0]) return pts[i][1] + (pts[i + 1][1] - pts[i][1]) * (v - pts[i][0]) / (pts[i + 1][0] - pts[i][0]); return pts[pts.length - 1][1]; };
-function ridgeSamples(pts, per = 18) {
-  const n = pts.length, out = [], at = i => pts[clamp(i, 0, n - 1)];
-  for (let i = 0; i < n - 1; i++) {
-    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
-    for (let k = 0; k < per; k++) {
-      const t = k / per, u = 1 - t;
-      const pt = [0, 1].map(m => {
-        const c1 = p1[m] + (p2[m] - p0[m]) / 6, c2 = p2[m] - (p3[m] - p1[m]) / 6;
-        return u * u * u * p1[m] + 3 * u * u * t * c1 + 3 * u * t * t * c2 + t * t * t * p2[m];
-      });
-      out.push([pt[0], pt[1], p1[2] + (p2[2] - p1[2]) * t, p1[3] + (p2[3] - p1[3]) * t]);
-    }
-  }
-  out.push(pts[n - 1]);
-  return out;
-}
-function prepPath(pts, pad = 0.45) {
-  const cum = [0]; let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-  for (let i = 0; i < pts.length; i++) {
-    if (pts[i][0] < xmin) xmin = pts[i][0]; if (pts[i][0] > xmax) xmax = pts[i][0];
-    if (pts[i][1] < ymin) ymin = pts[i][1]; if (pts[i][1] > ymax) ymax = pts[i][1];
-    if (i) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-  }
-  const tot = cum[cum.length - 1] || 1;
-  return { pts, cum: cum.map(v => v / tot), box: [xmin - pad, xmax + pad, ymin - pad, ymax + pad] };
-}
-const inBox = (b, x, y) => x >= b[0] && x <= b[1] && y >= b[2] && y <= b[3];
-function nearestOnPath(info, x, y) {
-  const { pts, cum } = info;
-  let bestD2 = Infinity, bestT = 0, bestSn = 0;
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const a = pts[i], b = pts[i + 1], vx = b[0] - a[0], vy = b[1] - a[1], l2 = vx * vx + vy * vy;
-    const u = l2 > 1e-12 ? clamp(((x - a[0]) * vx + (y - a[1]) * vy) / l2, 0, 1) : 0;
-    const px = a[0] + u * vx, py = a[1] + u * vy, d2 = (x - px) ** 2 + (y - py) ** 2;
-    if (d2 < bestD2) {
-      bestD2 = d2;
-      bestT = cum[i] + u * (cum[i + 1] - cum[i]);
-      bestSn = (y - py) * vx - (x - px) * vy;
-    }
-  }
-  const d = Math.sqrt(bestD2);
-  return { d, t: bestT, sn: bestSn >= 0 ? d : -d };
-}
-
-// ═════════ 岸线:控制点样条 + 噪声扰动 ═════════
-const coast = (() => {
-  const n = CTRL.length, PER = 30, raw = [];
-  for (let i = 0; i < n; i++) {
-    const p0 = CTRL[(i - 1 + n) % n], p1 = CTRL[i], p2 = CTRL[(i + 1) % n], p3 = CTRL[(i + 2) % n];
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    for (let k = 0; k < PER; k++) {
-      const t = k / PER;
-      let kind = segKind(i);
-      if (i === 1 && k >= 8 && k <= 20) kind = 'b';
-      if ((i === 19 && t > 0.55) || (i === 20 && t < 0.35)) kind = 'k';
-      raw.push({ p: bez(p1, c1, c2, p2, t), kind, hc: i >= 15 ? (p1[2] ?? 0) + ((p2[2] ?? 0) - (p1[2] ?? 0)) * t : 0 });
-    }
-  }
-  const m = raw.length, amp0 = raw.map(s => (s.kind === 'b' ? 0.05 : s.kind === 'k' ? 0.14 : 0.22));
-  const amp = amp0.map((_, i) => { let s = 0; for (let d = -7; d <= 7; d++) s += amp0[(i + d + m) % m]; return s / 15; });
-  return raw.map((s, i) => {
-    const a = raw[(i - 1 + m) % m].p, b = raw[(i + 1) % m].p;
-    let nx = -(b[1] - a[1]), ny = b[0] - a[0]; const L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
-    const d = amp[i] * fbm(s.p[0] * 2.3 + 11.3, s.p[1] * 2.3 + 4.7, 4) + (amp[i] / 4) * fbm(s.p[0] * 9 + 3, s.p[1] * 9 + 8, 3);
-    return { ...s, p: [s.p[0] + nx * d, s.p[1] + ny * d] };
-  });
-})();
-const coastPts = coast.map(s => s.p);
-const cliffS = coast.filter(s => s.kind === 'c' || s.kind === 'k'), northS = coast.filter(s => s.kind === 'r' || s.kind === 'b');
-const northPts = northS.map(s => s.p);
-const lakePts = blob(LAKE, 5), meadowPts = blob(MEADOW, 9);
-const riverPts = spline(RIVER, false), gullyPts = GULLIES.map(g => spline(g, false)), feederPts = FEEDERS.map(f => spline(f, false));
-const scarpInfo = prepPath(spline(SCARP, false), 0.5);
-const riverInfo = prepPath(riverPts, 0.45), gullyInfos = gullyPts.map(g => prepPath(g, 0.45)), feederInfos = feederPts.map(f => prepPath(f, 0.35));
-const ridgeSamplesList = RIDGES.map(rd => ridgeSamples(rd, 18));
-
-// ═════════ 地形 ═════════
-function baseHeight(x, y) {
-  let ds = Infinity, hs = 0, ws = 0;
-  for (const s of cliffS) { const d2 = (s.p[0] - x) ** 2 + (s.p[1] - y) ** 2; if (d2 < ds) ds = d2; const w = 1 / (d2 * d2 + 1e-7); ws += w; hs += w * s.hc; }
-  ds = Math.sqrt(ds);
-  const dn = Math.sqrt(dist2Pts(northPts, x, y)), dCoast = Math.min(ds, dn);
-  const fade = sstep(0, 0.045, dCoast);
-  let h = (hs / ws) * Math.pow(dn / (dn + ds + 1e-9), 0.85);
-  let rMax = 0;
-  for (const pts of ridgeSamplesList) {
-    for (const p of pts) {
-      const v = p[2] * Math.exp(-((x - p[0]) ** 2 + (y - p[1]) ** 2) / (p[3] * p[3]));
-      if (v > rMax) rMax = v;
-    }
-  }
-  h += rMax * fade;
-  for (const [bx, by, a, sg] of HILLS) h += a * Math.exp(-((x - bx) ** 2 + (y - by) ** 2) / (sg * sg)) * fade;
-  h += (11 * fbm(x * 2.6 + 3.1, y * 2.6 + 7.7, 5) + 2.8 * fbm(x * 11, y * 11, 3)) * fade;
-  const hRef = 128 + 4 * fbm(x * 1.1 + 2.1, y * 1.1 + 5.3, 2);
-  const terrMask = sstep(22, 48, h) * (1 - sstep(155, 188, h)) * sstep(0, 0.1, dCoast);
-  h -= 4.2 * Math.sin((2 * Math.PI * (h - hRef)) / 62) * terrMask;
-  return [Math.max(h, 0.3), ds, dn];
-}
-const meadowLevel = Math.round(baseHeight(MEADOW.x, MEADOW.y)[0]);
-const lakeLevel = Math.round(baseHeight(LAKE.x, LAKE.y)[0] - 4);
-const TG = { x0: -2.9, y0: -1.8, step: 0.0125, nx: 449, ny: 297 };
-const Hh = new Float32Array(TG.nx * TG.ny), DSg = new Float32Array(TG.nx * TG.ny), DNg = new Float32Array(TG.nx * TG.ny), INg = new Uint8Array(TG.nx * TG.ny);
-for (let j = 0; j < TG.ny; j++) for (let i = 0; i < TG.nx; i++) {
-  const x = TG.x0 + i * TG.step, y = TG.y0 + j * TG.step, k = j * TG.nx + i;
-  let [h, ds, dn] = baseHeight(x, y);
-  // 风草甸:崖后的一级平缓阶地
-  if (Math.abs(x - MEADOW.x) < 0.6 && Math.abs(y - MEADOW.y) < 0.5) {
-    const dm = pip(meadowPts, x, y) ? 0 : Math.sqrt(dist2Pts(meadowPts, x, y));
-    if (dm < 0.18) h += (meadowLevel - h) * (1 - sstep(0, 0.18, dm)) * 0.9;
-  }
-  // 镜湖:碟形缓坡入水的湖盆,北缘有天然玄武岩岩坎
-  const nearLake = Math.abs(x - LAKE.x) < 0.95 && Math.abs(y - LAKE.y) < 0.8;
-  if (nearLake && pip(lakePts, x, y)) h = lakeLevel;
-  else {
-    if (nearLake) {
-      const dl = Math.sqrt(dist2Pts(lakePts, x, y));
-      if (dl < 0.36) {
-        const wLake = Math.pow(1 - sstep(0, 0.36, dl), 1.6);
-        const target = lakeLevel + 2 + 18 * sstep(0, 0.36, dl);
-        h += (target - h) * wLake;
-      }
-    }
-    // 镜湖北缘天然岩坎(帘瀑陡坎)
-    if (inBox(scarpInfo.box, x, y)) {
-      const sc = nearestOnPath(scarpInfo, x, y);
-      const endFade = sstep(0, 0.18, sc.t) * (1 - sstep(0.82, 1, sc.t));
-      h -= 18 * sstep(-0.035, 0.055, sc.sn) * endFade * sstep(0, 0.12, dn) * clamp((h - 8) / 28, 0, 1);
-    }
-    const fade = sstep(0, 0.08, dn);
-    // 白水河:岩坎上方浅平流槽,过帘瀑后跌落并向下游展宽(限定自然水力底面防止未到海边先触底)
-    if (inBox(riverInfo.box, x, y)) {
-      const np = nearestOnPath(riverInfo, x, y);
-      const depth = 5 + 14 * sstep(0.34, 0.48, np.t);
-      const sig = 0.048 + 0.092 * sstep(0.35, 1.0, np.t);
-      const rFloor = np.t < 0.36 ? lakeLevel - 4 * (np.t / 0.36) : (lakeLevel - 4) * (1 - sstep(0.36, 0.48, np.t)) + 36 * (sstep(0.36, 0.48, np.t) * (1 - sstep(0.48, 1.0, np.t))) + 1.2 * sstep(0.48, 1.0, np.t);
-      const cut = Math.min(depth, Math.max(0, h - rFloor));
-      h -= cut * Math.exp(-(np.d * np.d) / (sig * sig)) * fade;
-    }
-    // 西沟:上游圆润起头、下游向月湾西侧展宽
-    if (inBox(gullyInfos[0].box, x, y)) {
-      const np = nearestOnPath(gullyInfos[0], x, y);
-      const sig = 0.05 + 0.075 * np.t, depth = (16 - 6 * np.t) * sstep(0, 0.18, np.t);
-      const gFloor = 2 + 46 * (1 - np.t);
-      const cut = Math.min(depth, Math.max(0, h - gFloor));
-      h -= cut * Math.exp(-(np.d * np.d) / (sig * sig)) * fade;
-    }
-    // 东峡谷—东沟:南段陡壁深切峡谷,经分水鞍部(约 47 m)过渡为北段浅谷
-    if (inBox(gullyInfos[1].box, x, y)) {
-      const np = nearestOnPath(gullyInfos[1], x, y);
-      const canyonW = 1 - sstep(-0.22, -0.05, y);
-      const sig = 0.068 * canyonW + (0.06 + 0.07 * sstep(0.40, 1.0, np.t)) * (1 - canyonW);
-      const depth = 18 + 38 * sstep(-0.10, -0.45, y);
-      const eFloor = np.t <= 0.40 ? 4 + 43 * sstep(0.02, 0.40, np.t) : 47 * (1 - sstep(0.40, 0.98, np.t)) + 1.5;
-      const cut = Math.min(depth, Math.max(0, h - eFloor));
-      const pwr = 2 + 1.2 * canyonW;
-      h -= cut * Math.exp(-Math.pow(np.d / sig, pwr)) * fade;
-    }
-    // 镜湖两条补给小溪
-    for (const fInfo of feederInfos) if (inBox(fInfo.box, x, y)) {
-      const np = nearestOnPath(fInfo, x, y);
-      h -= 5 * Math.exp(-(np.d * np.d) / (0.045 * 0.045)) * fade;
-    }
-    h = Math.max(h, 0.3);
-  }
-  Hh[k] = h; DSg[k] = ds; DNg[k] = dn; INg[k] = pip(coastPts, x, y) ? 1 : 0;
-}
-const sampler = (arr, g) => (x, y) => {
-  const fx = clamp((x - g.x0) / g.step, 0, g.nx - 1.001), fy = clamp((y - g.y0) / g.step, 0, g.ny - 1.001);
-  const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j, k = j * g.nx + i;
-  return arr[k] * (1 - u) * (1 - v) + arr[k + 1] * u * (1 - v) + arr[k + g.nx] * (1 - u) * v + arr[k + g.nx + 1] * u * v;
+const hash2 = (i, j, s = 1337) => {
+  let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(s, 1442695041)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
-const H = sampler(Hh, TG), DS = sampler(DSg, TG), DN = sampler(DNg, TG);
-const onLand = (x, y) => pip(coastPts, x, y);
-
-// 统计量
-const area = Math.abs(coastPts.reduce((s, p, i) => { const q = coastPts[(i + 1) % coastPts.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
-let peak = { h: 0 };
-for (let j = 0; j < TG.ny; j++) for (let i = 0; i < TG.nx; i++) { const k = j * TG.nx + i; if (INg[k] && Hh[k] > peak.h) peak = { h: Hh[k], x: TG.x0 + i * TG.step, y: TG.y0 + j * TG.step }; }
-const ext = coastPts.reduce((e, p) => [Math.min(e[0], p[0]), Math.max(e[1], p[0]), Math.min(e[2], p[1]), Math.max(e[3], p[1])], [9, -9, 9, -9]);
-const nearestCliff = (x, y) => cliffS.reduce((b, s) => ((s.p[0] - x) ** 2 + (s.p[1] - y) ** 2 < (b.p[0] - x) ** 2 + (b.p[1] - y) ** 2 ? s : b));
-for (const t of TUNNELS) { t.exit = nearestCliff(...t.aim).p; t.len = Math.hypot(t.exit[0] - t.from[0], t.exit[1] - t.from[1]); const L = t.len; t.dir = [(t.exit[0] - t.from[0]) / L, (t.exit[1] - t.from[1]) / L]; }
-const villaCoast = cliffS.filter(s => Math.abs(s.p[0] - VILLA_X) < 0.03).reduce((b, s) => (!b || s.p[1] < b.p[1] ? s : b), null).p;
-WEST_GATE.pos = nearestCliff(...WEST_GATE.aim).p;
-WEST_GATE.path = [WEST_GATE.pos, ...WEST_GATE.via, WEST_GATE.end];
-WEST_GATE.len = WEST_GATE.path.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - WEST_GATE.path[i - 1][0], p[1] - WEST_GATE.path[i - 1][1]) : 0), 0);
-
-// ═════════ 浅海、礁盘、浮动发生器 ═════════
-const XMIN = -3.9, XMAX = 3.9, YMAX = 2.95, YMIN = -3.0;
-const UG = { x0: XMIN, y0: YMIN, step: 0.02, nx: 391, ny: 299 };
-const Ug = new Float32Array(UG.nx * UG.ny);
-const isletPts = blob(ISLET, 33, 18, 1.5);
-const shoalPts = [[2.2, 0.15], [2.38, 0.11], [2.56, 0.07], [2.75, 0.02]];
-const chanInfo = prepPath([[0.05, 0.85], [0.1, 1.3], [0.16, 1.85]], 0.38);
-const shelfOf = { c: 0.07, k: 0.16, r: 0.48, b: 0.88 };
-for (let j = 0; j < UG.ny; j++) for (let i = 0; i < UG.nx; i++) {
-  const x = UG.x0 + i * UG.step, y = UG.y0 + j * UG.step;
-  let m = Infinity;
-  for (const s of coast) { const d = ((s.p[0] - x) ** 2 + (s.p[1] - y) ** 2) / (shelfOf[s.kind] ** 2); if (d < m) m = d; }
-  for (const p of isletPts) { const d = ((p[0] - x) ** 2 + (p[1] - y) ** 2) / (0.55 ** 2); if (d < m) m = d; }
-  for (const p of shoalPts) { const d = ((p[0] - x) ** 2 + (p[1] - y) ** 2) / (0.45 ** 2); if (d < m) m = d; }
-  let u = Math.sqrt(m) / (0.75 + 0.55 * vnoise(x * 1.4 + 5, y * 1.4 + 9) + 0.18 * fbm(x * 3.1 + 1, y * 3.1 + 2, 3));
-  if (inBox(chanInfo.box, x, y)) {
-    const ch = nearestOnPath(chanInfo, x, y);
-    u += 0.42 * sstep(0.92, 1.28, y) * (1 - sstep(1.65, 2.0, y)) * Math.exp(-(ch.d * ch.d) / (0.12 * 0.12));
-  }
-  Ug[j * UG.nx + i] = u;
+function vnoise(x, y, s = 1337) {
+  const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  return lerp(lerp(hash2(i, j, s), hash2(i + 1, j, s), u), lerp(hash2(i, j + 1, s), hash2(i + 1, j + 1, s), u), v) * 2 - 1;
 }
-const U = sampler(Ug, UG);
-const reefs = (() => {
-  const g = rng(7), out = [];
-  for (let a = -28; a <= 208; a += 5 + g() * 5.5) {
-    if ((a > 77 && a < 93) || g() < 0.16) continue;
-    const th = (a * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
-    let R = 0.8; while (R < 3.6 && (onLand(R * c, 0.1 + R * s) || U(R * c, 0.1 + R * s) < 0.86)) R += 0.02;
-    R *= 0.84 + g() * 0.18;
-    const size = 0.05 + g() * g() * 0.2;
-    if (onLand(R * c, 0.1 + R * s) || Math.sqrt(dist2Pts(coastPts, R * c, 0.1 + R * s)) < 0.22 || Math.hypot(R * c - ISLET.x, 0.1 + R * s - ISLET.y) < 0.28) continue;
-    out.push({ x: R * c, y: 0.1 + R * s, rx: size * (1 + g() * 1.2), ry: size * (0.45 + g() * 0.3), rot: th + Math.PI / 2 + (g() - 0.5) * 0.9, seed: Math.floor(g() * 1e6) });
-  }
-  for (let k = 0, tries = 0; k < 11 && tries < 400; tries++) {
-    const x = -2.6 + g() * 5.2, y = 0.3 + g() * 2.2, u = U(x, y);
-    if (u < 0.25 || u > 0.72 || onLand(x, y) || Math.sqrt(dist2Pts(coastPts, x, y)) < 0.12) continue;
-    out.push({ x, y, rx: 0.02 + g() * 0.035, ry: 0.015 + g() * 0.025, rot: g() * 3, seed: Math.floor(g() * 1e6), head: true }); k++;
+function fbm(x, y, oct = 4, s = 1337) {
+  let sum = 0, amp = 0.5, f = 1, norm = 0;
+  for (let o = 0; o < oct; o++) { sum += amp * vnoise(x * f, y * f, s + o * 97); norm += amp; amp *= 0.5; f *= 2.03; }
+  return sum / norm;
+}
+function ridged(x, y, oct = 3, s = 2777) {
+  let sum = 0, amp = 0.5, f = 1, norm = 0;
+  for (let o = 0; o < oct; o++) { const n = 1 - Math.abs(vnoise(x * f, y * f, s + o * 131)); sum += amp * n * n; norm += amp; amp *= 0.5; f *= 2.07; }
+  return sum / norm;
+}
+
+function catmullClosed(pts, sub = 22) {
+  const n = pts.length, out = [];
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+    for (let k = 0; k < sub; k++) {
+      const t = k / sub, t2 = t * t, t3 = t2 * t;
+      const b0 = -0.5 * t3 + t2 - 0.5 * t, b1 = 1.5 * t3 - 2.5 * t2 + 1, b2 = -1.5 * t3 + 2 * t2 + 0.5 * t, b3 = 0.5 * t3 - 0.5 * t2;
+      const row = [];
+      for (let c = 0; c < p1.length; c++) row.push(p0[c] * b0 + p1[c] * b1 + p2[c] * b2 + p3[c] * b3);
+      out.push(row);
+    }
   }
   return out;
-})();
-const channel = (() => { const th = (85 * Math.PI) / 180; let R = 0.8; while (R < 3.6 && (onLand(R * Math.cos(th), 0.1 + R * Math.sin(th)) || U(R * Math.cos(th), 0.1 + R * Math.sin(th)) < 1.1)) R += 0.02; return [R * Math.cos(th), 0.1 + R * Math.sin(th)]; })();
-const gens = (() => { const g = rng(21), out = []; for (let k = 0; k < 13; k++) { const th = (((k * 360) / 13 + (g() - 0.5) * 17) * Math.PI) / 180, f = 0.84 + g() * 0.3; out.push([3.2 * f * Math.cos(th), 0.15 + 2.4 * f * Math.sin(th)]); } return out; })();
-
-// ═════════ PNG ═════════
-const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-const crc32 = buf => { let c = 0xffffffff; for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-function png(w, h, pix) {
-  const raw = Buffer.alloc((w * 3 + 1) * h);
-  for (let y = 0; y < h; y++) { // Sub 滤波,平滑渐变压缩得更小
-    const ro = y * (w * 3 + 1), so = y * w * 3; raw[ro] = 1;
-    for (let i = 0; i < w * 3; i++) raw[ro + 1 + i] = (pix[so + i] - (i >= 3 ? pix[so + i - 3] : 0)) & 0xff;
-  }
-  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc32(td)); return Buffer.concat([len, td, c]); };
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
 }
-function scanMask(poly, w, h) {
-  const m = new Uint8Array(w * h), n = poly.length;
-  for (let py = 0; py < h; py++) {
-    const yc = py + 0.5, xs = [];
-    for (let i = 0, j = n - 1; i < n; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > yc) !== (yj > yc)) xs.push(xi + ((yc - yi) * (xj - xi)) / (yj - yi)); }
-    xs.sort((a, b) => a - b);
-    for (let q = 0; q + 1 < xs.length; q += 2) for (let px = Math.max(0, Math.ceil(xs[q] - 0.5)); px <= Math.min(w - 1, Math.floor(xs[q + 1] - 0.5)); px++) m[py * w + px] = 1;
+function pip(poly, x, y) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi) c = !c;
+  }
+  return c;
+}
+function dist2Pts(pts, x, y) {
+  let m = Infinity;
+  for (let i = 0; i < pts.length; i++) { const dx = pts[i][0] - x, dy = pts[i][1] - y, d = dx * dx + dy * dy; if (d < m) m = d; }
+  return m;
+}
+function distSeg(ax, ay, bx, by, x, y) {
+  const vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy;
+  const u = l2 > 1e-12 ? clamp(((x - ax) * vx + (y - ay) * vy) / l2) : 0;
+  return Math.hypot(x - (ax + u * vx), y - (ay + u * vy));
+}
+function distPolyLine(pts, x, y) {
+  let m = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = distSeg(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], x, y);
+    if (d < m) m = d;
   }
   return m;
 }
-
-// ═════════ 样式 ═════════
-const FONT = `'Microsoft YaHei','PingFang SC','Noto Sans CJK SC','Source Han Sans SC',sans-serif`;
-const C = { sand: '#f3e3b6', rock: '#4f4238', water: '#3f8fcf', ink: '#1f2c36', under: '#b23b28', hull: '#c08a1e', field: '#7a55b5', reef: '#e2d8ae', contour: '#2f4f36', landDark: '#4f8656', esc: '#19a05a' };
-const style = `
-  text{font-family:${FONT};fill:${C.ink}}
-  .t{font-size:12px} .s{font-size:10.5px} .xs{font-size:9.5px} .b{font-weight:700}
-  .halo{paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
-  .dhalo{paint-order:stroke;stroke:#16212a;stroke-width:3px;stroke-linejoin:round;fill:#fff}
-  .title{font-size:19px;font-weight:700} .sub{font-size:11.5px;fill:#4a5a66}
-  .mid{text-anchor:middle} .end{text-anchor:end}
-`;
-const svgOpen = (w, h) => `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img"><style>${style}</style>`;
-const txt = (x, y, s, cls = 't halo', extra = '') => `<text x="${r(x)}" y="${r(y)}" class="${cls}" ${extra}>${s}</text>`;
-const crPath = (pts, closed, M) => {
-  const n = pts.length, at = i => (closed ? pts[(i + n) % n] : pts[clamp(i, 0, n - 1)]);
-  let d = 'M' + M(pts[0]);
-  for (let i = 0; i < (closed ? n : n - 1); i++) {
-    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
-    d += `C${M([p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6])} ${M([p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6])} ${M(p2)}`;
+function lerpLine(line, s) {
+  if (s <= line[0][0]) return line[0][1];
+  for (let i = 0; i < line.length - 1; i++) {
+    if (s <= line[i + 1][0]) return lerp(line[i][1], line[i + 1][1], (s - line[i][0]) / (line[i + 1][0] - line[i][0]));
   }
-  return d + (closed ? 'Z' : '');
-};
-const GRADS = `
-  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfe3f2"/><stop offset="1" stop-color="#f5f1e4"/></linearGradient>
-  <linearGradient id="rockg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8f7e6c"/><stop offset="1" stop-color="#463a32"/></linearGradient>
-  <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9ecf8"/><stop offset=".5" stop-color="#5fa6c9"/><stop offset="1" stop-color="#234f6c"/></linearGradient>
-  <linearGradient id="glassx" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#081a27" stop-opacity=".7"/><stop offset=".25" stop-color="#081a27" stop-opacity="0"/><stop offset=".7" stop-color="#081a27" stop-opacity="0"/><stop offset="1" stop-color="#081a27" stop-opacity=".7"/></linearGradient>
-  <linearGradient id="shell" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7f4ec"/><stop offset="1" stop-color="#b9b6ad"/></linearGradient>
-  <linearGradient id="alloy" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a525b"/><stop offset="1" stop-color="#14181c"/></linearGradient>
-  <linearGradient id="bladeTop" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#96a3ad"/><stop offset=".48" stop-color="#56616a"/><stop offset="1" stop-color="#2e363d"/></linearGradient>
-  <linearGradient id="bladeSide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3c444c"/><stop offset="1" stop-color="#191e23"/></linearGradient>
-  <radialGradient id="atriumGlow" cx=".44" cy=".48" r=".62"><stop offset="0" stop-color="#ffe5aa"/><stop offset=".38" stop-color="#d8893c"/><stop offset=".78" stop-color="#3d291a"/><stop offset="1" stop-color="#141a20"/></radialGradient>
-  <radialGradient id="labglow" cx=".5" cy=".55" r=".65"><stop offset="0" stop-color="#ffd9a0"/><stop offset=".45" stop-color="#c7772e"/><stop offset="1" stop-color="#1a110b"/></radialGradient>
-  <radialGradient id="core" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#9fe8ff"/><stop offset="1" stop-color="#2aa6d6" stop-opacity="0"/></radialGradient>`;
-
-// ═════════ 图一:平面图 ═════════
-function planSVG() {
-  const S = 120, FX = 12, FY = 62, FW = (XMAX - XMIN) * S, FH = (YMAX - YMIN) * S, W = 960, Ht = FY + FH + 112;
-  const X = x => FX + (x - XMIN) * S, Y = y => FY + (YMAX - y) * S;
-  const M = p => `${r(X(p[0]))},${r(Y(p[1]))}`;
-  const pl = (pts, close) => 'M' + pts.map(M).join('L') + (close ? 'Z' : '');
-
-  // 底图栅格:晕渲地形 + 水深 + 崖脚乱石裙
-  const RS = Number(process.env.SKETCH_RS ?? 1), w = Math.round(FW * RS), h = Math.round(FH * RS), k = S * RS, buf = Buffer.alloc(w * h * 3);
-  const toPx = p => [(p[0] - XMIN) * k, (YMAX - p[1]) * k];
-  const land = scanMask(coastPts.map(toPx), w, h), lake = scanMask(lakePts.map(toPx), w, h), mead = scanMask(meadowPts.map(toPx), w, h);
-  const Lv = [-0.603, 0.603, 0.523], e = 0.008;
-  for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
-    const x = XMIN + (px + 0.5) / k, y = YMAX - (py + 0.5) / k, i = py * w + px;
-    let c;
-    if (lake[i]) c = mix([150, 208, 226], [58, 128, 190], sstep(0, 0.09, Math.sqrt(dist2Pts(lakePts, x, y))));
-    else if (land[i]) {
-      const hgt = H(x, y), gx = (H(x + e, y) - H(x - e, y)) / (2 * e * 1000), gy = (H(x, y + e) - H(x, y - e)) / (2 * e * 1000);
-      const nx = -gx * 3.5, ny = -gy * 3.5, nl = Math.hypot(nx, ny, 1), sh = (nx * Lv[0] + ny * Lv[1] + Lv[2]) / nl;
-      c = hgt < 60 ? mix([150, 192, 128], [110, 168, 108], hgt / 60) : hgt < 130 ? mix([110, 168, 108], [90, 148, 96], (hgt - 60) / 70) : mix([90, 148, 96], [80, 132, 90], clamp((hgt - 130) / 80));
-      const tex = 0.93 + 0.1 * vnoise(x * 60, y * 60) + 0.24 * fbm(x * 13, y * 13, 3);
-      if (mead[i]) c = mix(c, [204, 210, 132], 0.85);
-      const ds = DS(x, y); if (ds < 0.04) c = mix(c, [142, 126, 108], (1 - ds / 0.04) * 0.9);
-      const dn = DN(x, y); if (dn < 0.02 && hgt < 6) c = mix(c, [226, 212, 168], 1 - dn / 0.02);
-      c = c.map(v => v * tex * (0.55 + 0.86 * sh));
-    } else {
-      const u = U(x, y), n = fbm(x * 4, y * 4, 3) * 0.12;
-      c = u < 1 ? mix([214, 243, 233], [112, 200, 204], Math.pow(clamp(u + n), 0.8)) : u < 1.5 ? mix([112, 200, 204], [60, 126, 176], (u - 1) / 0.5) : mix([60, 126, 176], [40, 92, 142], clamp((u - 1.5) / 3 + n));
-      if (x > TG.x0 + 0.1 && x < 2.6 && y > TG.y0 + 0.1 && y < 1.8) {
-        const ds = DS(x, y);
-        if (ds < 0.085) { const sp = vnoise(x * 150, y * 150), rk = sp > 0.6 ? [240, 245, 246] : sp < 0.38 ? [58, 50, 44] : [104, 96, 88]; c = mix(rk, c, sstep(0.5, 1, ds / 0.085)); }
+  return line[line.length - 1][1];
+}
+function blob(o, seed = 11, n = 48, wob = 1) {
+  const out = [], c = Math.cos(o.rot || 0), s = Math.sin(o.rot || 0);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    const rad = 1 + 0.14 * wob * fbm(Math.cos(a) * 1.9 + seed, Math.sin(a) * 1.9 - seed, 3, seed * 31 + 7);
+    const lx = o.rx * rad * Math.cos(a), ly = o.ry * rad * Math.sin(a);
+    out.push([o.x + lx * c - ly * s, o.y + lx * s + ly * c]);
+  }
+  return out;
+}
+function scanMask(polyPx, nx, ny) {
+  const mask = new Uint8Array(nx * ny);
+  for (let j = 0; j < ny; j++) {
+    const y = j + 0.5, xs = [];
+    for (let i = 0, k = polyPx.length - 1; i < polyPx.length; k = i++) {
+      const [x0, y0] = polyPx[k], [x1, y1] = polyPx[i];
+      if ((y0 > y) !== (y1 > y)) xs.push(x0 + ((y - y0) * (x1 - x0)) / (y1 - y0));
+    }
+    xs.sort((a, b) => a - b);
+    for (let m = 0; m + 1 < xs.length; m += 2) {
+      const a = Math.max(0, Math.ceil(xs[m] - 0.5)), b = Math.min(nx - 1, Math.floor(xs[m + 1] - 0.5));
+      for (let i = a; i <= b; i++) mask[j * nx + i] = 1;
+    }
+  }
+  return mask;
+}
+function sampler(arr, G) {
+  return (x, y) => {
+    const fx = clamp((x - G.x0) / G.step, 0, G.nx - 1.001), fy = clamp((y - G.y0) / G.step, 0, G.ny - 1.001);
+    const i = Math.floor(fx), j = Math.floor(fy), tx = fx - i, ty = fy - j, w = G.nx;
+    return lerp(lerp(arr[j * w + i], arr[j * w + i + 1], tx), lerp(arr[(j + 1) * w + i], arr[(j + 1) * w + i + 1], tx), ty);
+  };
+}
+function marchSquares(arr, G, level) {
+  const segs = [], w = G.nx;
+  const P = (i, j) => [G.x0 + i * G.step, G.y0 + j * G.step];
+  const E = (p0, p1, v0, v1) => { const t = clamp((level - v0) / (v1 - v0 + 1e-12)); return [lerp(p0[0], p1[0], t), lerp(p0[1], p1[1], t)]; };
+  for (let j = 0; j < G.ny - 1; j++) for (let i = 0; i < G.nx - 1; i++) {
+    const v0 = arr[j * w + i], v1 = arr[j * w + i + 1], v2 = arr[(j + 1) * w + i + 1], v3 = arr[(j + 1) * w + i];
+    const m = (v0 >= level ? 1 : 0) | (v1 >= level ? 2 : 0) | (v2 >= level ? 4 : 0) | (v3 >= level ? 8 : 0);
+    if (m === 0 || m === 15) continue;
+    const p0 = P(i, j), p1 = P(i + 1, j), p2 = P(i + 1, j + 1), p3 = P(i, j + 1);
+    const e0 = E(p0, p1, v0, v1), e1 = E(p1, p2, v1, v2), e2 = E(p3, p2, v3, v2), e3 = E(p0, p3, v0, v3);
+    const tbl = { 1: [[e3, e0]], 2: [[e0, e1]], 3: [[e3, e1]], 4: [[e1, e2]], 5: [[e3, e2], [e0, e1]], 6: [[e0, e2]], 7: [[e3, e2]], 8: [[e2, e3]], 9: [[e0, e2]], 10: [[e0, e3], [e1, e2]], 11: [[e1, e2]], 12: [[e1, e3]], 13: [[e0, e1]], 14: [[e3, e0]] };
+    for (const s of tbl[m]) segs.push(s);
+  }
+  // 拼接折线
+  const key = p => `${Math.round(p[0] * 2000)},${Math.round(p[1] * 2000)}`;
+  const adj = new Map();
+  segs.forEach((s, idx) => {
+    for (const end of [0, 1]) { const k = key(s[end]); if (!adj.has(k)) adj.set(k, []); adj.get(k).push([idx, end]); }
+  });
+  const used = new Uint8Array(segs.length), lines = [];
+  for (let i = 0; i < segs.length; i++) {
+    if (used[i]) continue;
+    used[i] = 1;
+    const line = [segs[i][0], segs[i][1]];
+    for (const dir of [1, 0]) {
+      while (true) {
+        const cur = dir ? line[line.length - 1] : line[0];
+        const hits = adj.get(key(cur)) || [];
+        let found = false;
+        for (const [si, ei] of hits) {
+          if (used[si]) continue;
+          used[si] = 1;
+          const nxt = segs[si][1 - ei];
+          if (dir) line.push(nxt); else line.unshift(nxt);
+          found = true; break;
+        }
+        if (!found) break;
       }
     }
-    buf[i * 3] = clamp(c[0], 0, 255); buf[i * 3 + 1] = clamp(c[1], 0, 255); buf[i * 3 + 2] = clamp(c[2], 0, 255);
+    if (line.length >= 4) lines.push(line);
   }
-  const img = png(w, h, buf).toString('base64');
-
-  const o = [svgOpen(W, Ht)];
-  o.push(`<defs>
-    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="${C.under}"/></marker>
-    <marker id="arrk" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="${C.ink}"/></marker>
-    <clipPath id="isle"><path d="${pl(coastPts, true)}"/></clipPath>
-    <clipPath id="pf"><rect x="${FX}" y="${FY}" width="${FW}" height="${FH}"/></clipPath>
-  </defs>`);
-  o.push(`<rect width="${W}" height="${Ht}" fill="#fff"/>`);
-  o.push(`<image x="${FX}" y="${FY}" width="${FW}" height="${FH}" preserveAspectRatio="none" href="data:image/png;base64,${img}" xlink:href="data:image/png;base64,${img}"/>`);
-  o.push(`<g clip-path="url(#pf)">`);
-
-  // 幻域中环:随发生器位置变化的不规则边界
-  o.push(`<path d="${crPath(gens, true, M)}" fill="${C.field}" fill-opacity=".05" stroke="${C.field}" stroke-width="1.2" stroke-dasharray="7 5" opacity=".85"/>`);
-
-  // 礁盘与珊瑚丛
-  for (const f of reefs) {
-    const pts = blob(f, f.seed, 22, 1.5);
-    o.push(`<path d="${crPath(pts, true, M)}" fill="${C.reef}" fill-opacity="${f.head ? 0.8 : 0.9}" stroke="#fff" stroke-opacity=".75" stroke-width="${f.head ? 1 : 2.2}" stroke-dasharray="${f.head ? '' : '5 3 2 3'}"/>`);
-    if (!f.head) o.push(`<path d="${crPath(blob({ ...f, rx: f.rx * 0.55, ry: f.ry * 0.5 }, f.seed + 3, 14, 1.2), true, M)}" fill="#bfae7c" fill-opacity=".6"/>`);
-  }
-
-  // 等高线
-  for (const level of range(25, 200, 25)) {
-    let d = '';
-    for (let i = 0; i < TG.nx - 1; i++) for (let j = 0; j < TG.ny - 1; j++) {
-      const k0 = j * TG.nx + i, ks = [k0, k0 + 1, k0 + TG.nx + 1, k0 + TG.nx];
-      if (ks.some(q => !INg[q])) continue;
-      const v = ks.map(q => Hh[q]), x0 = TG.x0 + i * TG.step, y0 = TG.y0 + j * TG.step, st = TG.step;
-      const c = [[x0, y0], [x0 + st, y0], [x0 + st, y0 + st], [x0, y0 + st]], hit = [];
-      for (let q = 0; q < 4; q++) { const a = q, b = (q + 1) % 4; if ((v[a] < level) !== (v[b] < level)) { const t = (level - v[a]) / (v[b] - v[a]); hit.push([c[a][0] + t * (c[b][0] - c[a][0]), c[a][1] + t * (c[b][1] - c[a][1])]); } }
-      for (let q = 0; q + 1 < hit.length; q += 2) d += `M${M(hit[q])}L${M(hit[q + 1])}`;
-    }
-    o.push(`<path d="${d}" fill="none" stroke="${C.contour}" stroke-width="${level % 100 ? 0.6 : 1.1}" stroke-linecap="round" opacity="${level % 100 ? 0.45 : 0.7}"/>`);
-  }
-
-  // 冲沟、溪流、河
-  for (const g of gullyPts) o.push(`<path d="${pl(g)}" fill="none" stroke="#1f3f2a" stroke-width="1.6" stroke-dasharray="5 3" opacity=".8"/>`);
-  for (const f of feederPts) o.push(`<path d="${pl(f)}" fill="none" stroke="${C.water}" stroke-width="1.2"/>`);
-  o.push(`<path d="${pl(riverPts)}" fill="none" stroke="#2f7fc4" stroke-width="2.8" stroke-linecap="round"/>`);
-  o.push(`<path d="${crPath(lakePts, true, M)}" fill="none" stroke="#2a6ea8" stroke-width="1.1"/>`);
-  o.push(`<path d="M${r(X(FALLS[0]) - 6)},${r(Y(FALLS[1]) - 4)}l12,8" stroke="#fff" stroke-width="4"/><path d="M${r(X(FALLS[0]) - 6)},${r(Y(FALLS[1]) - 4)}l12,8" stroke="${C.ink}" stroke-width="1"/>`);
-  o.push(`<path d="${crPath(meadowPts, true, M)}" fill="none" stroke="#8f9650" stroke-width="1" stroke-dasharray="3 2"/>`);
-
-  // 林中营房
-  for (const [cx, cy] of CAMPS) { const g = rng(Math.round(cx * 100 + cy * 37 + 500)); for (let q = 0; q < 6; q++) { const dx = (g() - 0.5) * 0.2, dy = (g() - 0.5) * 0.14, a = Math.round(g() * 80 - 40); o.push(`<rect x="${r(X(cx + dx) - 3.5)}" y="${r(Y(cy + dy) - 2)}" width="7" height="4" rx="1" transform="rotate(${a} ${r(X(cx + dx))} ${r(Y(cy + dy))})" fill="#2f4a37" stroke="#d8e6c8" stroke-width=".7"/>`); } }
-
-  // 地下设施投影
-  o.push(`<g clip-path="url(#isle)"><path d="${crPath(HULL_PLAN, true, M)}" fill="${C.hull}" fill-opacity=".07" stroke="${C.hull}" stroke-width="1.6" stroke-dasharray="9 4"/></g>`);
-  o.push(`<path d="${crPath(HANGAR_PLAN, true, M)}" fill="${C.under}" fill-opacity=".07" stroke="${C.under}" stroke-width="1.2" stroke-dasharray="4 3"/>`);
-  for (const t of TUNNELS) {
-    const out = [t.exit[0] + t.dir[0] * 0.42, t.exit[1] + t.dir[1] * 0.42];
-    o.push(`<path d="M${M(t.from)}L${M(t.exit)}" stroke="${C.under}" stroke-width="2.2" stroke-dasharray="7 4"/><path d="M${M(t.exit)}L${M(out)}" stroke="${C.under}" stroke-width="1.6" marker-end="url(#arr)"/><circle cx="${r(X(t.from[0]))}" cy="${r(Y(t.from[1]))}" r="2.6" fill="${C.under}"/>`);
-  }
-  for (const p of SILOS) o.push(`<circle cx="${r(X(p[0]))}" cy="${r(Y(p[1]))}" r="4.6" fill="${C.under}" fill-opacity=".18" stroke="${C.under}" stroke-width="1.4" stroke-dasharray="2.5 2"/>`);
-  const gateTunnel = (pts) => `<path d="${pl(pts)}" fill="none" stroke="#15507f" stroke-width="3.6" opacity=".6" stroke-dasharray="6 3" stroke-linejoin="round"/>`;
-  const mainGatePos = [villaCoast[0], villaCoast[1] - 0.11];
-  o.push(gateTunnel([mainGatePos, [villaCoast[0] + 0.02, villaCoast[1] + 0.31]]) + gateTunnel(spline(WEST_GATE.path, false, 8)));
-
-  // 海岸线:岩岸、沙滩、悬崖
-  const runs = kind => { const out = []; let cur = null; coast.forEach((s, i) => { if (s.kind === kind) { if (!cur) { cur = [coast[(i - 1 + coast.length) % coast.length].p]; out.push(cur); } cur.push(s.p); } else if (cur) { cur.push(s.p); cur = null; } }); return out; };
-  o.push(`<path d="${pl(coastPts, true)}" fill="none" stroke="#2f4a37" stroke-width="1.1"/>`);
-  for (const run of runs('b')) o.push(`<path d="${pl(run)}" fill="none" stroke="${C.sand}" stroke-width="7" stroke-linecap="round"/>`);
-  let ticks = '';
-  coast.forEach((s, i) => {
-    if (s.kind !== 'c' || i % 2) return;
-    const a = coast[(i - 1 + coast.length) % coast.length].p, b = coast[(i + 1) % coast.length].p;
-    let nx = b[1] - a[1], ny = -(b[0] - a[0]); const L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
-    if (onLand(s.p[0] + nx * 0.02, s.p[1] + ny * 0.02)) { nx = -nx; ny = -ny; }
-    const len = (2.5 + 7 * s.hc / 210) / S;
-    ticks += `M${M(s.p)}L${M([s.p[0] + nx * len, s.p[1] + ny * len])}`;
-  });
-  for (const run of runs('k')) o.push(`<path d="${pl(run)}" fill="none" stroke="#6f655a" stroke-width="5.5" stroke-linecap="round" stroke-dasharray="1.5 4"/><path d="${pl(run)}" fill="none" stroke="#d6cdbd" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1 5.5"/>`);
-  for (const run of runs('c')) o.push(`<path d="${pl(run)}" fill="none" stroke="${C.rock}" stroke-width="2.6" stroke-linejoin="round"/>`);
-  o.push(`<path d="${ticks}" stroke="${C.rock}" stroke-width="1" fill="none"/>`);
-
-  // 东屿、海蚀柱、崖宅、闸门
-  o.push(`<path d="${crPath(blob({ ...ISLET, rx: ISLET.rx * 1.5, ry: ISLET.ry * 1.6 }, 31, 16, 1.3), true, M)}" fill="#bfece2" opacity=".55"/><path d="${crPath(blob(ISLET, 33, 18, 1.5), true, M)}" fill="#6f9f72" stroke="${C.rock}" stroke-width="1.8"/>`);
-  for (const [x, y, rad] of STACKS) o.push(`<path d="${crPath(blob({ x, y, rx: rad * 1.6, ry: rad * 1.3 }, Math.round(x * 100 + 77), 10, 1.4), true, M)}" fill="none" stroke="#fff" stroke-width="1.5" opacity=".8"/><path d="${crPath(blob({ x, y, rx: rad, ry: rad * 0.8 }, Math.round(x * 100 + 7), 10, 1.4), true, M)}" fill="#4b3f36"/>`);
-  o.push(`<g transform="translate(${r(X(villaCoast[0]))},${r(Y(villaCoast[1]))})"><path d="M-13,-3L-6,-9L12,-5L8,1L-3,-1L-9,2Z" fill="#6a757e" stroke="${C.ink}" stroke-width=".8"/><path d="M-6,-7L7,-4L4,0L-4,-2Z" fill="#e6a145" stroke="${C.ink}" stroke-width=".6"/></g>`);
-  for (const p of [mainGatePos, WEST_GATE.pos]) o.push(`<rect x="${r(X(p[0]) - 4.5)}" y="${r(Y(p[1]) - 3)}" width="9" height="6" rx="1" fill="#0d2233" stroke="#7fd4ff" stroke-width="1.2"/>`);
-
-  // 出击口
-  for (const [x, y] of SALLY) o.push(`<path d="M${r(X(x))},${r(Y(y) - 5)}l5,9h-10z" fill="${C.under}" stroke="#fff" stroke-width=".8"/>`);
-
-  // 幻域浮标
-  for (const [x, y] of gens) o.push(`<g transform="translate(${r(X(x))},${r(Y(y))})"><circle r="8" fill="${C.field}" opacity=".18"/><path d="M0,-5.5L5,0L0,5.5L-5,0Z" fill="#2a2140" stroke="#cdb7ff" stroke-width="1.3"/></g>`);
-
-  // 剖面线、立面视向
-  for (const [a, b] of [[-2.56, -2.16], [1.55, 1.95]]) o.push(`<line x1="${r(X(SECTION_X))}" y1="${r(Y(a))}" x2="${r(X(SECTION_X))}" y2="${r(Y(b))}" stroke="${C.ink}" stroke-width="1.8" stroke-dasharray="12 4 2 4"/>`);
-  o.push(txt(X(SECTION_X), Y(-2.68) + 5, 'B', 't b halo mid') + txt(X(SECTION_X), Y(2.02), 'B′', 't b halo mid'));
-  o.push(`<line x1="${r(X(1.55))}" y1="${r(Y(-2.45))}" x2="${r(X(1.55))}" y2="${r(Y(-2.08))}" stroke="${C.ink}" stroke-width="1.6" marker-end="url(#arrk)"/>` + txt(X(1.65), Y(-2.3), '立面图视向(自南向北)', 's halo'));
-
-  // 文字
-  const L = (x, y, s, cls = 't halo mid') => o.push(txt(X(x), Y(y), s, cls));
-  L(villaCoast[0] - 0.3, villaCoast[1] - 0.16, `主崖岬 ▲${Math.round(peak.h)} m`, 't b halo end');
-  L(villaCoast[0] - 0.2, villaCoast[1] + 0.05, '崖宅', 's b halo end');
-  L(villaCoast[0] - 0.3, villaCoast[1] - 0.3, '主闸门(水下 80 m)', 'xs halo end');
-  L(HEADLANDS[1][1] - 0.02, HEADLANDS[1][2] - 0.36, '西崖角', 't b halo mid');
-  L(HEADLANDS[2][1] + 0.2, HEADLANDS[2][2] - 0.32, '东南崖角', 't b halo mid');
-  L(WEST_GATE.pos[0] - 0.12, WEST_GATE.pos[1] - 0.16, `西闸门(水下 ${WEST_GATE.depth} m)`, 'xs halo end');
-  L(MEADOW.x, MEADOW.y + 0.24, `风草甸 ${meadowLevel} m`, 't b halo mid');
-  L(MEADOW.x, MEADOW.y - 0.19, '机库洞厅·发射井', 'xs halo mid');
-  L(LAKE.x - 0.05, LAKE.y + 0.27, `镜湖 ${lakeLevel} m`, 't b halo mid');
-  L(FALLS[0] - 0.1, FALLS[1] + 0.06, '帘瀑', 's b halo end');
-  L(0.42, 0.3, '白水河', 's halo');
-  L(0.3, 0.78, '月 湾', 't b halo mid');
-  L(-0.78, 1.9, '西岬', 's b halo');
-  L(1.55, 1.06, '东岬', 's b halo mid');
-  L(ISLET.x, ISLET.y - 0.24, '东屿', 's b halo mid');
-  for (const [hx, hy, , , name] of HILLS) if (name) L(hx, hy + 0.03, `${name} ▲${Math.round(H(hx, hy))}`, 's b halo mid');
-  L(-1.62, 0.12, '西沟', 's halo end');
-  L(1.3, -0.02, '东沟', 's halo');
-  L(0.36, -1.0, '裂湾', 's b halo');
-  L(-0.95, -1.08, '西裂谷', 's b halo mid');
-  L(1.78, -0.58, '礁石滩', 's b halo');
-  L(1.0, -0.5, '东峡谷', 's b halo end');
-  L(-2.56, -0.3, '礁石滩', 's b halo end');
-  L(CAMPS[2][0] + 0.06, CAMPS[2][1] + 0.13, '林中营房', 's b halo mid');
-  L(CAMPS[1][0], CAMPS[1][1] + 0.13, '林中营房', 's b halo mid');
-  L(-2.02, 1.02, '小滩', 's halo end');
-  L(-0.25, 1.12, '潟湖(浅水 3–15 m)', 's halo mid');
-  L(channel[0] + 0.12, channel[1] + 0.05, '北水道', 's b halo');
-  L(-2.25, 1.95, '礁盘与珊瑚丛(错落分布)', 's b halo mid');
-  TUNNELS.forEach((t, i) => { const e2 = [t.exit[0] + t.dir[0] * 0.3, t.exit[1] + t.dir[1] * 0.3]; if (i === 2) L(e2[0] + 0.08, e2[1] - 0.1, t.name, 's b halo'); else L(e2[0] + (i ? 0.08 : -0.08), e2[1] + 0.12, t.name, i ? 's b halo' : 's b halo end'); });
-  L(0.05, -0.36, '基核范围(地下)', 'xs halo mid');
-  const gl = gens.reduce((b, p) => (p[0] + p[1] > b[0] + b[1] ? p : b));
-  L(gl[0] - 0.12, gl[1] + 0.02, '幻域浮标(位置不固定)', 's b halo end');
-  L(-3.7, -2.42, '幻域中环(视觉隐形 · 脑波干扰),边界随发生器移动', 's dhalo');
-  L(STACKS[3][0] - 0.08, STACKS[3][1] - 0.12, '海蚀柱', 'xs halo end');
-  o.push(`</g><rect x="${FX}" y="${FY}" width="${FW}" height="${FH}" fill="none" stroke="${C.ink}" stroke-width="1"/>`);
-
-  // 图名、指北针、比例尺
-  o.push(txt(14, 30, '图一 岛屿平面图', 'title') + txt(14, 49, '晕渲地形,等高线间隔 25 米 · 坐标原点在岛屿中部,x 向东,y 向北', 'sub'));
-  o.push(`<g transform="translate(${FX + FW - 36},${FY + 54})"><circle r="26" fill="#fff" opacity=".75"/><path d="M0,-22L7,10L0,5L-7,10z" fill="${C.ink}"/><text x="0" y="22" class="xs b mid">北</text></g>`);
-  o.push(`<g transform="translate(${FX + 22},${FY + FH - 22})"><rect x="-8" y="-20" width="${2 * S + 60}" height="34" fill="#fff" opacity=".75" rx="4"/><rect width="${S}" height="6" fill="${C.ink}"/><rect x="${S}" width="${S}" height="6" fill="#fff" stroke="${C.ink}" stroke-width="1"/>
-    <text x="0" y="-5" class="xs">0</text><text x="${S}" y="-5" class="xs mid">1</text><text x="${2 * S}" y="-5" class="xs mid">2 公里</text></g>`);
-
-  // 图例
-  const items = [
-    [`<path d="M0,5h26" stroke="${C.rock}" stroke-width="2.6"/><path d="M3,5v7M9,5v7M15,5v7M21,5v7" stroke="${C.rock}" stroke-width="1"/>`, '悬崖(齿越长越高)'],
-    [`<path d="M0,8h26" stroke="${C.sand}" stroke-width="7" stroke-linecap="round"/>`, '沙滩'],
-    [`<path d="M0,11q13,-11 26,0" fill="none" stroke="${C.contour}" stroke-width="1.1"/>`, '等高线'],
-    [`<path d="M0,8h26" stroke="#2f7fc4" stroke-width="2.8"/>`, '河流与湖泊'],
-    [`<path d="M0,8h26" stroke="#1f3f2a" stroke-width="1.6" stroke-dasharray="5 3"/>`, '冲沟 / 峡谷'],
-    [`<ellipse cx="13" cy="8" rx="12" ry="6" fill="${C.reef}" stroke="#9fd8d0" stroke-width="2"/>`, '礁盘 / 珊瑚丛'],
-    [`<path d="M13,2L19,8L13,14L7,8Z" fill="#2a2140" stroke="${C.field}" stroke-width="1.3"/>`, '幻域浮标'],
-    [`<path d="M0,8h26" stroke="${C.hull}" stroke-width="1.6" stroke-dasharray="9 4"/>`, '基核范围(地下)'],
-    [`<path d="M0,8h20" stroke="${C.under}" stroke-width="2.2" stroke-dasharray="7 4"/><path d="M19,4l7,4l-7,4z" fill="${C.under}"/>`, '弹射隧道与发射方向'],
-    [`<circle cx="13" cy="8" r="4.6" fill="${C.under}" fill-opacity=".18" stroke="${C.under}" stroke-width="1.4" stroke-dasharray="2.5 2"/>`, '机库顶部发射井'],
-    [`<rect x="8" y="5" width="9" height="6" rx="1" fill="#0d2233" stroke="#3f8fb5" stroke-width="1.2"/><path d="M17,8h9" stroke="#15507f" stroke-width="3.6" opacity=".6" stroke-dasharray="6 3"/>`, '潜艇闸门与水下隧道'],
-    [`<rect x="6" y="4" width="7" height="4" rx="1" fill="#2f4a37"/><rect x="14" y="8" width="7" height="4" rx="1" fill="#2f4a37"/>`, '林中营房 ▲出击口'],
-    [`<path d="M0,8h26" stroke="#6f655a" stroke-width="5.5" stroke-linecap="round" stroke-dasharray="1.5 4"/><path d="M0,8h26" stroke="#d6cdbd" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1 5.5"/>`, '礁石滩'],
-  ];
-  items.forEach(([sym, name], i) => o.push(`<g transform="translate(${16 + (i % 6) * 158},${FY + FH + 26 + Math.floor(i / 6) * 34})">${sym}<text x="34" y="12" class="s">${name}</text></g>`));
-  o.push('</svg>');
-  return o.join('\n');
+  return lines;
 }
 
-// ═════════ 图二:南立面全景 + 崖宅细部 ═════════
-const southProfile = range(-2650, 2500, 10).map(xm => {
-  const x = xm / 1000;
-  let best = null;
-  for (const s of cliffS) if (Math.abs(s.p[0] - x) < 0.016 && (!best || s.p[1] < best.p[1])) best = s;
-  let sky = 0, front = null;
-  for (let y = -1.75; y <= 1.9; y += 0.0125) if (onLand(x, y)) { if (front === null) front = y; sky = Math.max(sky, H(x, y)); }
-  const face = best ? (best.kind === 'k' ? H(x, best.p[1] + 0.025) : Math.max(best.hc * 0.92, H(x, best.p[1] + 0.03))) : 0;
-  return { xm, yc: best ? best.p[1] : front, face, sky };
-});
-
-function elevSVG() {
-  const W = 960, Ht = 800, o = [svgOpen(W, Ht)];
-  const kx = 0.178, kz = 0.534, x0 = 34, T = 66, z0 = T + 250 * kz, bot = z0 + 110 * kz, FWp = 5150 * kx;
-  const EX = xm => x0 + (xm + 2650) * kx, EZ = z => z0 - z * kz;
-  const vx = VILLA_X * 1000, n = southProfile.length;
-  o.push(`<defs>${GRADS}
-    <linearGradient id="mist" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".42"/></linearGradient>
-    <clipPath id="pano"><rect x="${x0}" y="${T}" width="${r(FWp)}" height="${r(bot - T)}"/></clipPath>
-    <clipPath id="det"><rect x="45" y="336" width="870" height="384"/></clipPath>
-  </defs>`);
-  o.push(`<rect width="${W}" height="${Ht}" fill="#fff"/>`);
-  o.push(txt(14, 30, '图二 南立面图', 'title') + txt(14, 49, '自南面海上向北看 · 上图为全岛南岸(垂直放大 3 倍,颜色越浅越远),下图为崖宅正面细部(真实比例)', 'sub'));
-
-  // ── 全景:远景山丘 → 中景裂谷与凹湾 → 海雾 → 前景岬角 ──
-  o.push(`<g clip-path="url(#pano)"><rect x="${x0}" y="${T}" width="${r(FWp)}" height="${r(bot - T)}" fill="url(#sky)"/>`);
-  const pp = (f, add = 0) => southProfile.map(p => `${r(EX(p.xm))},${r(EZ(f(p) + add))}`).join('L');
-  o.push(`<path d="M${r(EX(-2650))},${z0}L${pp(p => p.sky, 10)}L${r(EX(2500))},${z0}Z" fill="#c4d3da"/>`);
-  o.push(`<path d="M${r(EX(-2650))},${z0}L${pp(p => p.sky * 0.86, 0)}L${r(EX(2500))},${z0}Z" fill="#aebfc4"/>`);
-  const ycMin = Math.min(...southProfile.filter(p => p.face > 0).map(p => p.yc));
-  const cols = southProfile.map((p, i) => {
-    const a = southProfile[Math.max(0, i - 4)], b = southProfile[Math.min(n - 1, i + 4)], sl = ((b.yc ?? 0) - (a.yc ?? 0)) / ((b.xm - a.xm) / 1000);
-    const rec = (p.yc ?? 0) - ycMin, lit = (-0.75 * sl + 0.66) / Math.hypot(sl, 1);
-    return { ...p, rec, f: Math.pow(clamp(rec / 0.9), 0.75), lit: clamp(0.5 + 0.5 * lit, 0.15, 1), i };
-  }).filter(p => p.face > 3);
-  const cw = 10 * kx + 0.7;
-  const drawCol = p => {
-    const g = hash(p.i, 3), base = mix([58, 48, 41], [126, 108, 90], p.lit), c = mix(base, [196, 208, 214], p.f * 0.6), cx = EX(p.xm) - 0.3, top = EZ(p.face);
-    let s = `<rect x="${r(cx)}" y="${r(top)}" width="${r(cw)}" height="${r(z0 - top + 2)}" fill="${rgb(c)}"/>`;
-    s += `<rect x="${r(cx)}" y="${r(EZ(p.face + 5 + 3 * g))}" width="${r(cw)}" height="${r((7 + 3 * g) * kz)}" fill="${rgb(mix([52, 104, 64], [190, 208, 204], p.f * 0.55))}"/>`;
-    if (p.f < 0.85) {
-      const al = (1 - p.f) * 0.5;
-      if (p.i % 2 === 0) s += `<line x1="${r(cx + 0.9)}" y1="${r(EZ(p.face * (0.97 - 0.06 * g)))}" x2="${r(cx + 0.9)}" y2="${r(EZ(p.face * (0.6 + 0.08 * g)))}" stroke="#000" stroke-opacity="${r(al * 0.55 * 10) / 10}" stroke-width=".7"/>`;
-      s += `<rect x="${r(cx)}" y="${r(EZ(p.face * 0.72))}" width="${r(cw)}" height="1.6" fill="#000" opacity="${r(al * 0.9 * 10) / 10}"/>`;
-      for (const q of [0.13, 0.3, 0.47, 0.6]) if (hash(p.i, q * 100) > 0.22) s += `<rect x="${r(cx)}" y="${r(EZ(p.face * q) - 1.5)}" width="${r(cw)}" height="1.6" fill="${rgb(mix([74, 128, 78], [190, 208, 204], p.f))}"/><rect x="${r(cx)}" y="${r(EZ(p.face * q))}" width="${r(cw)}" height="1" fill="#000" opacity="${r(al * 0.7 * 10) / 10}"/>`;
-    }
-    if (p.face > 20) s += `<circle cx="${r(cx + 1 + g)}" cy="${r(z0 - 1 - 3 * g)}" r="${r(1.6 + 2.2 * hash(p.i, 9))}" fill="${rgb(mix([40, 34, 30], [196, 208, 214], p.f * 0.85))}"/>`;
-    return s;
-  };
-  const far = cols.filter(p => p.f >= 0.3).sort((a, b) => b.rec - a.rec), near = cols.filter(p => p.f < 0.3).sort((a, b) => b.rec - a.rec);
-  o.push(far.map(drawCol).join(''));
-  o.push(`<rect x="${x0}" y="${r(EZ(70))}" width="${r(FWp)}" height="${r(70 * kz)}" fill="url(#mist)"/>`);
-  o.push(near.map(drawCol).join(''));
-  // 崖宅(缩略)
-  o.push(`<g transform="translate(${r(EX(vx))},${r(EZ(152))})"><path d="M-15,-9L-5,-13L16,-2L11,4L2,8L-8,6L-12,-1Z" fill="#2a3138" stroke="#14181c" stroke-width=".6"/><path d="M-11,-7L10,0L4,4L-7,1Z" fill="#f0a84b"/><path d="M-15,-9L-4,-12L16,-2L13,0L-6,-7Z" fill="#85919a" stroke="#1f252b" stroke-width=".6"/><path d="M-4,5L8,5L6,9L-2,9Z" fill="#ffb347" stroke="#1f252b" stroke-width=".5"/></g>`);
-  // 发射口(在裂谷湾顶,属中景)
-  for (const t of TUNNELS) { const ex = t.exit[0] * 1000; o.push(`<rect x="${r(EX(ex - 15))}" y="${r(EZ(t.z + 7.5))}" width="${r(30 * kx)}" height="${r(15 * kz)}" rx="1.5" fill="#1b1410" stroke="#ff9d3b" stroke-width="1.3"/>`); }
-  // 海面
-  o.push(`<rect x="${x0}" y="${r(z0)}" width="${r(FWp)}" height="${r(bot - z0)}" fill="#2b6a9c" opacity=".62"/>`);
-  o.push(`<path d="M${range(-2650, 2500, 22).map((xm, i) => `${r(EX(xm))},${r(z0 + (i % 2 ? -1.2 : 1))}`).join('L')}" fill="none" stroke="#fff" stroke-width="1.8" opacity=".9"/>`);
-  for (const [gx, dep] of [[vx, 80], [WEST_GATE.pos[0] * 1000, WEST_GATE.depth]]) o.push(`<rect x="${r(EX(gx - 20))}" y="${r(EZ(-dep + 10))}" width="${r(40 * kx)}" height="${r(20 * kz)}" rx="1.5" fill="#0d2233" stroke="#7fd4ff" stroke-width="1.3"/>`);
-  // 前景:海蚀孤峰与浮动发生器
-  for (const [sx, , rad] of STACKS) { const ex = EX(sx * 1000), hgt = 16 + rad * 1300; o.push(`<path d="M${r(ex - 5)},${r(z0 + 1)}L${r(ex - 3.4)},${r(EZ(hgt * 0.55))}L${r(ex - 1.6)},${r(EZ(hgt * 0.92))}L${r(ex + 0.4)},${r(EZ(hgt))}L${r(ex + 2.2)},${r(EZ(hgt * 0.7))}L${r(ex + 3.6)},${r(EZ(hgt * 0.74))}L${r(ex + 5.2)},${r(z0 + 1)}Z" fill="#241d19"/><path d="M${r(ex - 1.6)},${r(EZ(hgt * 0.9))}V${r(z0)}M${r(ex + 1.6)},${r(EZ(hgt * 0.7))}V${r(z0)}" stroke="#000" stroke-opacity=".5" stroke-width=".6"/><ellipse cx="${r(ex)}" cy="${r(z0 + 1.5)}" rx="8" ry="1.8" fill="#fff" opacity=".85"/>`); }
-  const fg = gens.filter(g => g[1] < -1.3 && Math.abs(g[0]) < 2.4);
-  for (const g of fg) { const ex = EX(g[0] * 1000); o.push(`<g transform="translate(${r(ex)},${r(z0)})"><path d="M-7,0Q0,-9 7,0Z" fill="#3a3148" stroke="#cdb7ff" stroke-width="1"/><path d="M-6,0Q-5,18 0,26Q5,18 6,0Z" fill="#cdb7ff" opacity=".35"/><ellipse rx="12" ry="2.2" fill="none" stroke="#cdb7ff" stroke-width=".9" opacity=".9"/></g>`); }
-  o.push(`</g>`);
-  for (const z of [-100, 0, 100, 200]) o.push(`<line x1="${x0 - 5}" y1="${r(EZ(z))}" x2="${x0}" y2="${r(EZ(z))}" stroke="${C.ink}"/>` + txt(x0 - 7, EZ(z) + 3.5, z, 'xs end'));
-  o.push(`<rect x="${x0}" y="${T}" width="${r(FWp)}" height="${r(bot - T)}" fill="none" stroke="${C.ink}"/>`);
-  // 全景标注
-  const lead = (x1, y1, x2, y2, col = C.ink) => o.push(`<path d="M${r(x1)},${r(y1)}L${r(x2)},${r(y2)}" stroke="${col}" stroke-width=".8" fill="none"/>`);
-  const faceOf = xm => southProfile[clamp(Math.round((xm + 2650) / 10), 0, n - 1)].face;
-  for (const [name, hx, , h] of HEADLANDS) { const xm = hx * 1000, f = Math.max(faceOf(xm), faceOf(xm - 60), faceOf(xm + 60)); o.push(txt(EX(xm), EZ(f + 24), `${name} ${h} m`, 't b halo mid')); }
-  o.push(txt(EX(-950), EZ(118), '西裂谷', 's halo mid') + txt(EX(260), EZ(132), '裂湾', 's halo mid') + txt(EX(1260), EZ(66), '东峡谷', 's b halo mid') + txt(EX(1660), EZ(34), '礁石滩', 's halo mid'));
-  lead(EX(vx + 80), EZ(160), EX(vx + 280), EZ(222));
-  o.push(txt(EX(vx + 286), EZ(222) + 3, '崖宅(见下图)', 's b halo'));
-  for (const t of TUNNELS) { const ex = EX(t.exit[0] * 1000); o.push(txt(ex, EZ(t.z - 26), `${t.name} +${t.z} m`, 'xs dhalo mid')); }
-  o.push(txt(EX(vx + 40), EZ(-84), '主闸门(水下 80 m)', 's dhalo') + txt(EX(WEST_GATE.pos[0] * 1000 + 40), EZ(-WEST_GATE.depth - 4), `西闸门(水下 ${WEST_GATE.depth} m)`, 's dhalo'));
-  if (fg[0]) o.push(txt(EX(fg[0][0] * 1000) + 16, z0 + 24, '幻域浮标(前景)', 's dhalo'));
-  o.push(txt(EX(1700), EZ(H(HILLS[2][0], HILLS[2][1]) + 30), '内陆山丘(远景,没入海雾)', 'xs halo mid'));
-  o.push(txt(EX(2480), z0 - 5, '海平面', 'xs dhalo end') + txt(EX(-2620), T + 14, '西', 't b halo') + txt(EX(2470), T + 14, '东', 't b halo end'));
-  o.push(`<g transform="translate(${x0},${r(bot + 14)})"><rect width="${1000 * kx}" height="5" fill="${C.ink}"/><text x="${1000 * kx + 8}" y="6" class="xs">1 公里(水平)</text></g>`);
-
-  // ── 崖宅正面细部(真实比例) ──
-  const ks = 3, DX = x => 480 + (x - 5) * ks, DZ = z => 720 - (z - 88) * ks, q = (x, z) => `${r(DX(x))},${r(DZ(z))}`;
-  const poly = (pts, attrs) => `<path d="M${pts.map(p => q(p[0], p[1])).join('L')}Z" ${attrs}/>`;
-  o.push(txt(45, 326, '崖宅正面细部(真实比例):斜切折板壳体悬挑于半山腰岩鼻,内嵌多层暖光主厅与重工实验舱', 't b'));
-  o.push(`<g clip-path="url(#det)"><rect x="45" y="336" width="870" height="384" fill="url(#sky)"/>`);
-  // 岩壁:圆润崖顶 → 柱状节理绝壁与岩鼻 → 碎石缓台 → 下一级陡坎
-  const topZ = x => 205 + 3 * Math.sin(x * 0.021 + 1) + 1.5 * Math.sin(x * 0.07);
-  for (let x = -148, i = 0; x <= 158; x += 5, i++) o.push(`<circle cx="${r(DX(x + (i % 3) - 1))}" cy="${r(DZ(topZ(x) + 2 + ((i * 7) % 5)))}" r="${r((4.5 + ((i * 5) % 5)) * ks)}" fill="${i % 4 ? C.landDark : '#5f9a66'}"/>`);
-  o.push(`<path id="dface" d="M${range(-146, 156, 4).map(x => q(x, topZ(x))).join('L')}L${q(156, 80)}L${q(-146, 80)}Z" fill="url(#rockg)"/>`);
-  o.push(`<clipPath id="dr"><use href="#dface" xlink:href="#dface"/></clipPath><g clip-path="url(#dr)">`);
-  // 岩鼻:受光的外凸带,下缘有悬挑阴影
-  o.push(`<path d="M${q(-146, 176)}C${q(-80, 181)} ${q(60, 179)} ${q(156, 174)}L${q(156, 147)}C${q(70, 141)} ${q(-70, 143)} ${q(-146, 148)}Z" fill="#a8947e" opacity=".55"/>`);
-  o.push(`<path d="M${q(-146, 148)}C${q(-70, 143)} ${q(70, 141)} ${q(156, 147)}L${q(156, 136)}C${q(70, 132)} ${q(-70, 134)} ${q(-146, 139)}Z" fill="#000" opacity=".38"/>`);
-  for (let i = 0; i < 150; i++) { const x = -146 + ((i * 61) % 302) + hash(i, 1) * 2, zt = 198 - hash(i, 2) * 14, zb = 150 + hash(i, 3) * 12; o.push(`<line x1="${r(DX(x))}" y1="${r(DZ(zt))}" x2="${r(DX(x + (hash(i, 4) - 0.5) * 1.5))}" y2="${r(DZ(zb))}" stroke="${i % 5 ? '#000' : '#fff'}" stroke-opacity="${i % 5 ? 0.2 : 0.1}" stroke-width="1"/>`); }
-  for (let i = 0; i < 90; i++) { const x = -146 + ((i * 47) % 302), zt = 122 - hash(i, 5) * 3, zb = 101 + hash(i, 6) * 5; o.push(`<line x1="${r(DX(x))}" y1="${r(DZ(zt))}" x2="${r(DX(x + (hash(i, 7) - 0.5) * 1.2))}" y2="${r(DZ(zb))}" stroke="#000" stroke-opacity=".22" stroke-width="1"/>`); }
-  // 碎石缓台(海拔约 122–130 米与 96–100 米),长着矮灌木
-  for (const [za, zb2] of [[130, 122], [100, 93]]) o.push(`<path d="M${range(-146, 156, 6).map(x => q(x, za + 1.5 * Math.sin(x * 0.09))).join('L')}L${q(156, zb2)}L${q(-146, zb2)}Z" fill="#7d7361" opacity=".9"/>`);
-  for (let i = 0; i < 70; i++) { const x = -146 + ((i * 37) % 302), za = i % 2 ? 130 : 100; if (za === 130 && x > -44 && x < 96) continue; o.push(`<circle cx="${r(DX(x))}" cy="${r(DZ(za + 1 + hash(i, 8) * 2))}" r="${r((0.8 + hash(i, 9) * 1.1) * ks)}" fill="${i % 3 ? '#4f7d4f' : '#6a9460'}"/>`); }
-  o.push(`</g>`);
-
-  // 崖宅:冷灰钛岩斜切折板壳体 + 内凹多层暖光幕墙 + 重工实验舱,悬挑在半山腰(+116 ~ +176 m),底部收束锚入崖壁
-  const atrPts = [[-56, 169], [68, 145], [52, 138], [-36, 145]];
-  const labPts = [[-20, 137], [54, 132], [46, 120], [-12, 120]];
-  // 1) 悬挑壳体在崖壁上的投射阴影(凸显半山腰悬空体量)
-  o.push(poly([[-72, 174], [-30, 118], [52, 111], [98, 134], [88, 140], [-12, 122]], 'fill="#000" opacity=".42"'));
-
-  // 2) 中央内凹斜切主厅(+138 ~ +168 m):三层流线型暖光挑台与深色幕墙肋框
-  o.push(`<clipPath id="atrClip"><path d="M${atrPts.map(p => q(p[0], p[1])).join('L')}Z"/></clipPath>`);
-  o.push(poly(atrPts, 'fill="url(#atriumGlow)" stroke="#0e1216" stroke-width="1.2"'));
-  o.push(`<g clip-path="url(#atrClip)">`);
-  // 室内三层流线型错层挑台(参照参考图多层暖光错层轮廓)
-  for (const [zf, xL, xR, curve] of [[160, -56, 10, 2.2], [153, -48, 42, 1.8], [146, -40, 62, 1.4]]) {
-    o.push(`<path d="M${q(xL, zf + 2.4)}Q${q((xL + xR) / 2, zf + 2.4 - curve)} ${q(xR, zf + 2.4)}L${q(xR, zf - 1)}L${q(xL, zf - 1)}Z" fill="#ffd992" opacity=".32"/>`);
-    o.push(`<path d="M${q(xL, zf)}Q${q((xL + xR) / 2, zf - curve)} ${q(xR, zf)}L${q(xR, zf - 1.2)}Q${q((xL + xR) / 2, zf - 1.2 - curve)} ${q(xL, zf - 1.2)}Z" fill="#2a2420" stroke="#ffe7b0" stroke-width=".9"/>`);
-  }
-  // 玻璃深部弧形光晕与斜向反光带
-  o.push(`<ellipse cx="${r(DX(-8))}" cy="${r(DZ(155))}" rx="${24 * ks}" ry="${8 * ks}" fill="#ffe9b5" opacity=".28"/>`);
-  o.push(poly([[-44, 169], [-20, 165], [-10, 140], [-32, 143]], 'fill="#9ec7dc" opacity=".14"'));
-  o.push(poly([[12, 159], [28, 155], [34, 139], [18, 140]], 'fill="#ffffff" opacity=".10"'));
-  // 深色斜向+竖向结构肋框(Mullion Grid)
-  for (let x = -54; x <= 68; x += 6) o.push(`<line x1="${r(DX(x))}" y1="${r(DZ(170))}" x2="${r(DX(x + 6))}" y2="${r(DZ(137))}" stroke="#12171c" stroke-width=".95" opacity=".82"/>`);
-  for (const z of [163.5, 158, 152, 146.5, 141.5]) o.push(`<line x1="${r(DX(-58))}" y1="${r(DZ(z))}" x2="${r(DX(70))}" y2="${r(DZ(z - 4))}" stroke="#12171c" stroke-width=".85" opacity=".72"/>`);
-  o.push(`</g>`);
-  o.push(poly(atrPts, 'fill="none" stroke="#10151a" stroke-width="1.3"'));
-
-  // 3) 下层内嵌重工实验舱(+120 ~ +137 m)
-  o.push(`<clipPath id="labClip"><path d="M${labPts.map(p => q(p[0], p[1])).join('L')}Z"/></clipPath>`);
-  o.push(poly(labPts, 'fill="url(#labglow)" stroke="#0d1115" stroke-width="1.3"'));
-  o.push(`<g clip-path="url(#labClip)">`);
-  o.push(`<path d="M${q(-18, 130.5)}H${r(DX(54))}" stroke="#14181c" stroke-width="3"/><path d="M${q(4, 130.5)}V${r(DZ(125.5))}M${q(36, 130.5)}V${r(DZ(124))}" stroke="#14181c" stroke-width="1.5"/>`);
-  for (const x of [-16, 44]) o.push(`<rect x="${r(DX(x))}" y="${r(DZ(136))}" width="${r(6 * ks)}" height="${r(16 * ks)}" fill="#262c33" stroke="#0c1014" stroke-width=".8"/>`);
-  o.push(`<circle cx="${r(DX(22))}" cy="${r(DZ(125.5))}" r="${3.6 * ks}" fill="url(#core)"/><circle cx="${r(DX(22))}" cy="${r(DZ(125.5))}" r="${1.3 * ks}" fill="#fff"/>`);
-  o.push(`<path d="M${q(10, 120.2)}l${r(3 * ks)},${r(-2.2 * ks)}l${r(5.5 * ks)},${r(-1 * ks)}l${r(5.5 * ks)},${r(1 * ks)}l${r(3 * ks)},${r(2.2 * ks)}z" fill="#1e252c" stroke="#7fd4ff" stroke-width=".8"/>`);
-  o.push(`</g>`);
-  o.push(poly(labPts, 'fill="none" stroke="#10151a" stroke-width="1.3"'));
-
-  // 4) 外层斜切折板装甲壳体(上掠刃翼 + 西翼护板 + 中脊斜梁 + 下层半山腰收束龙骨)
-  // 下层收束龙骨(锚入 +116 m 半山腰崖壁,下方 +88 ~ +116 m 保留自然陡坎与碎石缓台)
-  o.push(poly([[-26, 122], [-12, 120], [46, 120], [68, 133], [82, 135], [52, 118], [-14, 116]], 'fill="url(#bladeSide)" stroke="#14181c" stroke-width="1.1"'));
-  o.push(poly([[46, 120], [68, 133], [82, 135], [52, 118]], 'fill="#5c6872" stroke="#14181c" stroke-width=".9"'));
-  // 中脊斜梁(将上层主厅与下层实验舱清晰分开)
-  o.push(poly([[-28, 141.5], [68, 134], [82, 135], [54, 132], [-20, 137]], 'fill="#2c333a" stroke="#14181c" stroke-width="1"'));
-  o.push(poly([[-46, 152], [-36, 145], [52, 138], [82, 135], [68, 134], [-28, 141.5]], 'fill="#7c8892" stroke="#181e24" stroke-width="1.1"'));
-  o.push(`<path d="M${q(-46, 152)}L${q(-36, 145)}L${q(52, 138)}L${q(82, 135)}" fill="none" stroke="#c8d3db" stroke-width="1.1"/>`);
-  // 西侧斜切护翼(自高处尖端收束至半山腰)
-  o.push(poly([[-56, 169], [-36, 145], [-12, 120], [-18, 121], [-45, 149]], 'fill="url(#bladeSide)" stroke="#14181c" stroke-width="1"'));
-  o.push(poly([[-74, 176], [-68, 168], [-52, 148], [-26, 122], [-18, 121], [-45, 149], [-56, 169]], 'fill="#75828c" stroke="#181e24" stroke-width="1.1"'));
-  // 上掠主刃翼(高耸西翼尖斜掠至东翼尖,锐角悬挑)
-  o.push(poly([[-56, 169], [68, 145], [62, 142.8], [-52, 165.8]], 'fill="url(#bladeSide)" stroke="#14181c" stroke-width=".9"'));
-  o.push(poly([[-74, 176], [-32, 171], [92, 142], [68, 145], [-56, 169]], 'fill="url(#bladeTop)" stroke="#181e24" stroke-width="1.2"'));
-  o.push(`<path d="M${q(-74, 176)}L${q(-26, 169)}L${q(92, 142)}" fill="none" stroke="#d9e2e8" stroke-width="1.3"/>`);
-
-  // 5) 悬挑附属平台(西翼露台泳池 +148 m, 东翼起降坪 +138 m, 折板起降舌台 +119 m)
-  // 西翼折板悬挑露台与泳池
-  o.push(poly([[-66, 146.2], [-28, 146.2], [-24, 140], [-60, 140]], 'fill="#000" opacity=".28"'));
-  o.push(poly([[-72, 148.5], [-24, 148.5], [-30, 146.2], [-66, 146.2]], 'fill="#5c6770" stroke="#181d22" stroke-width=".9"'));
-  o.push(`<rect x="${r(DX(-72))}" y="${r(DZ(149.4))}" width="${r(48 * ks)}" height="${r(0.9 * ks)}" fill="#95a1ab" stroke="#232a30" stroke-width=".6"/>`);
-  o.push(`<rect x="${r(DX(-66))}" y="${r(DZ(149.2))}" width="${r(24 * ks)}" height="${r(0.7 * ks)}" fill="#5fa9b8"/><path d="M${q(-41, 150.3)}H${r(DX(-25))}" stroke="#cfe3ea" stroke-width="1" opacity=".9"/>`);
-  // 东翼起降坪 +138 m
-  o.push(`<path d="M${q(66, 136.8)}L${q(62, 131)}M${q(88, 136.8)}L${q(82, 131)}" stroke="#262c33" stroke-width="${1.1 * ks}"/>` + poly([[62, 136.8], [94, 136.8], [98, 131], [66, 131]], 'fill="#000" opacity=".26"'));
-  o.push(poly([[60, 139.2], [98, 139.2], [92, 136.8], [56, 136.8]], 'fill="#74808a" stroke="#181d22" stroke-width=".9"'));
-  o.push(`<path d="M${q(60, 139.2)}H${r(DX(98))}" stroke="#cfd8df" stroke-width="1.1"/>`);
-  // 折板起降舌台 +119 m
-  o.push(poly([[-2, 118.2], [40, 118.2], [34, 111], [4, 111]], 'fill="#000" opacity=".32"'));
-  o.push(poly([[-6, 120.2], [44, 120.2], [38, 118.2], [0, 118.2]], 'fill="#7e8a94" stroke="#181d22" stroke-width=".9"'));
-  o.push(`<path d="M${q(-6, 120.2)}H${r(DX(44))}" stroke="#cfd8df" stroke-width="1.1"/><path d="M${q(12, 120.2)}H${r(DX(32))}" stroke="#f3c168" stroke-width="1.2"/>`);
-  // 人(立于西翼悬挑露台,1.8 m)
-  o.push(`<g stroke="#111" stroke-width="1.3" fill="#111"><circle cx="${r(DX(-32))}" cy="${r(DZ(151))}" r="1.3"/><line x1="${r(DX(-32))}" y1="${r(DZ(150.6))}" x2="${r(DX(-32))}" y2="${r(DZ(149.4))}"/></g>`);
-  o.push(`</g><rect x="45" y="336" width="870" height="384" fill="none" stroke="${C.ink}"/>`);
-  for (const z of [100, 120, 140, 160, 180, 200]) o.push(`<line x1="39" y1="${r(DZ(z))}" x2="45" y2="${r(DZ(z))}" stroke="${C.ink}"/>` + txt(37, DZ(z) + 3.5, z, 'xs end'));
-  // 细部标注
-  const DL = (x, z, lx, lz, s, cls = 's dhalo') => { lead(DX(x), DZ(z), DX(lx), DZ(lz), '#fff'); o.push(txt(DX(lx) + (cls.includes('end') ? -4 : 4), DZ(lz) + 4, s, cls)); };
-  DL(-52, 172, -62, 190, '上掠折板刃翼:斜切探出岩鼻约 22 m', 's dhalo end');
-  DL(6, 156, 56, 184, '内凹斜切主厅:多层暖光挑台,外罩深色幕墙', 's dhalo');
-  DL(22, 140, 82, 166, '中脊斜梁:斜贯立面,分隔主厅与下层实验舱', 's dhalo');
-  DL(-52, 148.5, -86, 134, '西翼悬挑露台与泳池 +148 m', 's dhalo end');
-  DL(36, 126, 76, 116, '下层重工实验舱(宽约 68 m,深 100 m)', 's dhalo');
-  DL(18, 119, 54, 100, '折板起降舌台 +119 m(底部收束于半山腰)', 's dhalo');
-  DL(86, 138.5, 104, 150, '东翼起降坪 +138 m', 's dhalo');
-  DL(-32, 150.5, -88, 162, '人 1.8 m', 'xs dhalo end');
-  o.push(txt(DX(-134), DZ(196), '柱状节理绝壁', 'xs dhalo') + txt(DX(-134), DZ(174), '岩鼻(外凸微悬挑)', 'xs dhalo') + txt(DX(-134), DZ(116), '碎石缓台与陡坎', 'xs dhalo'));
-  o.push(`<g transform="translate(${r(DX(95))},736)"><rect width="${20 * ks}" height="5" fill="${C.ink}"/><text x="${20 * ks + 8}" y="6" class="xs">20 米</text></g>`);
-  o.push(txt(45, 742, '隐蔽状态下,折板外衣与幕墙切换为拟岩外观,露台、舌台与起降坪收回岩体,崖壁上看不出任何人工痕迹。', 'sub'));
-  o.push('</svg>');
-  return o.join('\n');
-}
-
-// ═════════ 图三:南北剖面图(B–B′,沿 x = SECTION_X) ═════════
-const CHAMBERS = [
-  ['崖宅', '+116 ~ +176 m', '岛主居所:半山腰斜切折板壳体、多层暖光主厅与重工实验舱'],
-  ['机库洞厅', '+35 ~ +80 m', '空天战机;洞顶垂直发射,南端水平弹射'],
-  ['内港', '−95 ~ +25 m', '潜艇内港与船坞,连通两座水下闸门'],
-  ['工坊', '−240 ~ −125 m', '机器人工厂、食物合成、海水淡化、仓储'],
-  ['聚变堆', '−320 m', '全岛能源'],
-  ['中枢', '−330 m', '超级人工智能'],
-  ['地下城', '−575 ~ −430 m', '舱室群:居住、餐饮、医疗、训练、指挥、军械、仓储、生命维持'],
+// ═════════ 1. 岛形与岸线 (3.1 版 31 控制点, 顺时针) ═════════
+// [x, y, 崖高m, 类型] 类型: 'c' 绝壁深潜崖, 'k' 崩积黑岩礁滩, 'r' 峡湾陡岩壁, 'b' 黑曜石砾滩
+const CTRL = [
+  [-1.85,  0.20,  15, 'k'], // 1 西端, 黑岩礁石滩
+  [-1.72,  0.72,  90, 'r'], // 2 陡峭岩岸, 其后有小砾滩
+  [-1.45,  1.05, 160, 'c'], // 3 岩岸绝壁 160m
+  [-1.18,  1.42, 190, 'c'], // 4 西岬外侧, 190m
+  [-0.88,  1.65, 210, 'c'], // 5 西岬尖, 210m
+  [-0.68,  1.45, 175, 'r'], // 6 西岬尖内侧
+  [-0.78,  1.05, 165, 'r'], // 7 西岬内侧陡壁
+  [-0.55,  0.72, 135, 'r'], // 8 黑砾湾西壁崖脚
+  [-0.25,  0.45,   4, 'b'], // 9 黑砾湾西段(黑曜石砾滩)
+  [ 0.10,  0.42,   3, 'b'], // 10 黑砾湾湾底, 悬瀑入海口
+  [ 0.45,  0.55, 135, 'r'], // 11 黑砾湾东壁崖脚
+  [ 0.72,  0.85, 240, 'c'], // 12 东岬陡崖 240m
+  [ 1.02,  0.80, 220, 'c'], // 13 东岬尖, 海蚀拱门西座
+  [ 1.25,  0.45, 260, 'c'], // 14 一线天水道西壁, 260m
+  [ 1.38,  0.10, 280, 'c'], // 15 一线天水道中段, 280m
+  [ 1.42, -0.10,  14, 'k'], // 16 东礁滩, 崩积礁石平台
+  [ 1.32, -0.25, 220, 'c'], // 17 一线天水道西壁南口, 220m
+  [ 1.18, -0.58,  15, 'k'], // 18 东峡谷谷口, 乱石滩
+  [ 0.92, -1.05, 290, 'c'], // 19 东南崖角, 290m
+  [ 0.62, -0.90, 280, 'c'], // 20 悬崖 280m
+  [ 0.44, -1.02, 320, 'c'], // 21 裂湾东口, 320m
+  [ 0.22, -0.72, 280, 'c'], // 22 裂湾湾顶, 280m
+  [ 0.04, -0.98, 380, 'c'], // 23 裂湾西壁, 380m
+  [-0.22, -1.25, 460, 'c'], // 24 主崖岬, 460m
+  [-0.55, -1.08, 390, 'c'], // 25 悬崖 390m
+  [-0.82, -0.68, 270, 'c'], // 26 西裂谷谷顶, 270m
+  [-1.12, -0.92, 310, 'c'], // 27 悬崖 310m
+  [-1.45, -1.02, 340, 'c'], // 28 西崖角, 340m
+  [-1.68, -0.62, 240, 'c'], // 29 悬崖 240m, 西闸门在此崖下
+  [-1.82, -0.28, 130, 'c'], // 30 悬崖 130m
+  [-1.88, -0.05,  12, 'k'], // 31 西礁滩, 乱石礁盘
 ];
-function sectionSVG() {
-  const W = 960, Ht = 668, o = [svgOpen(W, Ht)];
-  const ky = 170, kz = 0.425, x0 = 58, zero = 258, yMin = -2.7, yMax = 2.5;
-  const SX = y => x0 + (y - yMin) * ky, SZ = z => zero - z * kz, P = (y, z) => `${r(SX(y))},${r(SZ(z))}`;
-  const top = SZ(430), bot = SZ(-720), right = SX(yMax);
-  let Y0 = null, Y1 = null, l0 = null, l1 = null;
-  for (let y = -1.8; y <= 1.9; y += 0.0025) { if (onLand(SECTION_X, y)) { if (Y0 === null) Y0 = y; Y1 = y; } if (pip(lakePts, SECTION_X, y)) { if (l0 === null) l0 = y; l1 = y; } }
-  const crestS = CLIFF[CLIFF.length - 1][0] / 1000, crestZ = H(SECTION_X, Y0 + 0.03), cs = crestZ / CLIFF[CLIFF.length - 1][1];
-  const cliffPts = CLIFF.map(([s, z]) => [Y0 + s / 1000, z * cs]), lift = crestZ - H(SECTION_X, Y0 + crestS);
-  const groundAt = y => (y <= Y0 + crestS ? lerpLine(cliffPts, y) : y > l0 && y < l1 ? lakeLevel - LAKE.depth * Math.pow(Math.sin((Math.PI * (y - l0)) / (l1 - l0)), 0.7) : H(SECTION_X, Math.min(y, Y1 - 0.012)) + lift * (1 - sstep(0, 0.22, y - Y0 - crestS)));
-  const SB_S = APRON.map(([s, z]) => [s / 1000, z]);
-  const SB_N = [[0, 0], [0.06, -3], [0.28, -9], [0.46, -6], [0.52, -2], [0.58, -7], [0.78, -12], [0.9, -4], [0.95, -1], [1.03, -1], [1.07, -12], [1.18, -70], [1.45, -210], [1.95, -420]];
-  const slopeOff = z => { for (let i = 0; i + 1 < SB_S.length; i++) { const [a, za] = SB_S[i], [b, zb] = SB_S[i + 1]; if (z >= za && z <= zb) return a + (b - a) * (z - za) / (zb - za); } return SB_S[0][0]; };
-  const O = (off, z) => P(Y0 + off, z);
 
-  o.push(`<defs>
-    <linearGradient id="sky2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfe3f2"/><stop offset="1" stop-color="#f6f3ea"/></linearGradient>
-    <linearGradient id="sea2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8cc4e6"/><stop offset="1" stop-color="#153f66"/></linearGradient>
-    <linearGradient id="rock2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bfb199"/><stop offset="1" stop-color="#84766a"/></linearGradient>
-    <linearGradient id="dome" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfeaff"/><stop offset="1" stop-color="#f1ead2"/></linearGradient>
-    <marker id="arh" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#d1432b"/></marker>
-    <marker id="aro" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="${C.under}"/></marker>
-    <marker id="arg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="${C.esc}"/></marker>
-    <clipPath id="frame"><rect x="${x0}" y="${r(top)}" width="${r(right - x0)}" height="${r(bot - top)}"/></clipPath>
-  </defs>`);
-  o.push(`<rect width="${W}" height="${Ht}" fill="#fff"/>`);
-  o.push(txt(14, 30, '图三 南北剖面图(B–B′)', 'title') + txt(14, 49, `沿 x = ${SECTION_X} 切开(经过崖宅、风草甸和镜湖),自东向西看 · 垂直方向放大 2.5 倍,崖壁的真实坡度见图四`, 'sub'));
-  o.push(`<g clip-path="url(#frame)">`);
-  o.push(`<rect x="${x0}" y="${r(top)}" width="${r(right - x0)}" height="${r(zero - top)}" fill="url(#sky2)"/><rect x="${x0}" y="${zero}" width="${r(right - x0)}" height="${r(bot - zero)}" fill="url(#sea2)"/>`);
+const SUB = 24;
+const rawCoast = catmullClosed(CTRL.map(p => [p[0], p[1], p[2]]), SUB);
+const coast = rawCoast.map((pt, idx) => {
+  const ci = Math.floor(idx / SUB);
+  const kind = CTRL[(ci + (idx % SUB > SUB * 0.55 ? 1 : 0)) % CTRL.length][3];
+  const prev = rawCoast[(idx - 1 + rawCoast.length) % rawCoast.length];
+  const next = rawCoast[(idx + 1) % rawCoast.length];
+  let nx = next[1] - prev[1], ny = -(next[0] - prev[0]);
+  const L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
+  // 在一线天水道 (ci 13..16) 与黑砾湾底 (ci 8..10) 减小法向扰动, 保证海峡宽度精准为 100~130 米
+  const narrow = (ci >= 12 && ci <= 16) || (ci >= 8 && ci <= 10) || ci === 23;
+  const amp = narrow ? 0.012 : 0.032;
+  const d = amp * fbm(pt[0] * 4.2 + 7.1, pt[1] * 4.2 - 3.4, 3, 901) + 0.008 * vnoise(pt[0] * 17, pt[1] * 17, 902);
+  return { p: [pt[0] + nx * d, pt[1] + ny * d], hc: Math.max(2, pt[2]), kind };
+});
+const coastPts = coast.map(s => s.p);
+const cliffS = coast.filter(s => s.kind === 'c' || s.kind === 'r');
+const northPts = coast.filter(s => s.kind === 'b' || s.kind === 'r').map(s => s.p);
 
-  // 幻域与浮动发生器
-  const gS = -2.42, gN = 2.3;
-  o.push(`<path d="M${P(gS, 0)}C${P(gS + 0.5, 420)} ${P(gN - 0.9, 440)} ${P(gN, 0)}" fill="${C.field}" fill-opacity=".05" stroke="${C.field}" stroke-width="1.3" stroke-dasharray="7 5"/>`);
-  for (const y of [gS, gN]) o.push(`<g transform="translate(${r(SX(y))},${zero})"><path d="M-8,0Q0,-10 8,0Z" fill="#3a3148" stroke="#cdb7ff" stroke-width="1"/><path d="M-7,0Q-6,20 0,30Q6,20 7,0Z" fill="#cdb7ff" opacity=".45"/><ellipse rx="14" ry="2.4" fill="none" stroke="#cdb7ff" stroke-width=".9"/></g>`);
+// 东屿: 锯齿状孤绝副岛, 中心 (1.65, 0.15), 长 ~550m, 宽 ~260m, 锯齿脊高达 280m
+// 西岸约在 x = 1.50~1.52, 与主岛东岸 x = 1.38~1.40 形成 110~130m 宽的一线天水道
+const ISLET = { x: 1.65, y: 0.15, rx: 0.132, ry: 0.285, rot: -0.14, h: 280 };
+const isletPts = (() => {
+  const out = [], n = 64, c = Math.cos(ISLET.rot), s = Math.sin(ISLET.rot);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    const wob = 1 + 0.09 * fbm(Math.cos(a) * 2.6 + 5, Math.sin(a) * 2.6 - 3, 3, 551) + 0.04 * Math.sin(a * 5);
+    const lx = ISLET.rx * wob * Math.cos(a), ly = ISLET.ry * wob * Math.sin(a);
+    out.push([ISLET.x + lx * c - ly * s, ISLET.y + lx * s + ly * c]);
+  }
+  return out;
+})();
 
-  // 岩体与地表
-  const ground = range(Y0 + crestS, Y1, 0.01).map(y => [y, groundAt(y)]);
-  const sbS = SB_S.map(([a, z]) => [Y0 + a, z]), sbN = SB_N.map(([a, z]) => [Y1 + a, z]);
-  const outline = [...sbS, ...cliffPts.slice(1), ...ground, [Y1, 0], ...sbN];
-  o.push(`<path d="M${P(yMin - 0.2, -800)}L${outline.map(p => P(p[0], p[1])).join('L')}L${P(yMax + 0.2, -800)}Z" fill="url(#rock2)"/>`);
-  o.push(`<path d="M${P(l0, lakeLevel)}L${range(l0, l1, 0.01).map(y => P(y, groundAt(y))).join('L')}L${P(l1, lakeLevel)}Z" fill="#4f9fd8"/>`);
-  const veg = range(Y0 + 0.12, Y1 - 0.06, 0.01).filter(y => !(y > l0 - 0.01 && y < l1 + 0.01) && !pip(meadowPts, SECTION_X, y));
-  let vd = ''; veg.forEach((y, i) => { vd += (i && y - veg[i - 1] < 0.015 ? 'L' : 'M') + P(y, groundAt(y) + 9 + 3 * Math.sin(y * 70)); });
-  o.push(`<path d="${vd}" fill="none" stroke="${C.landDark}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`);
-  const mIn = range(Y0, Y1, 0.01).filter(y => pip(meadowPts, SECTION_X, y));
-  if (mIn.length) o.push(`<path d="M${mIn.map(y => P(y, groundAt(y) + 3)).join('L')}" fill="none" stroke="#c4cc84" stroke-width="3.5" stroke-linecap="round"/>`);
-  o.push(`<path d="M${P(Y1 - 0.05, groundAt(Y1 - 0.05) + 1)}L${P(Y1 + 0.05, -2)}" stroke="${C.sand}" stroke-width="4" stroke-linecap="round"/>`);
-  o.push(`<path d="M${outline.map(p => P(p[0], p[1])).join('L')}" fill="none" stroke="#453a32" stroke-width="1.3"/>`);
-  for (const [s, z] of [[38, 54], [64, 96]]) o.push(`<circle cx="${r(SX(Y0 + s / 1000))}" cy="${r(SZ(z * cs) - 2)}" r="2.2" fill="#5c8a57"/>`);
-  for (let i = 0; i < 14; i++) { const s = -95 + i * 8.5; o.push(`<circle cx="${r(SX(Y0 + s / 1000))}" cy="${r(SZ(lerpLine(SB_S, s / 1000)) - 1)}" r="${r(1.3 + hash(i, 11) * 1.6)}" fill="#3a302a"/>`); }
-  for (const [s, hgt] of [[-78, 26], [-52, 15]]) o.push(`<path d="M${O((s - 5) / 1000, lerpLine(SB_S, (s - 5) / 1000))}L${O((s - 1) / 1000, hgt)}L${O((s + 4) / 1000, lerpLine(SB_S, (s + 4) / 1000))}Z" fill="#241d19"/>`);
-  o.push(`<path d="M${O(-0.1, 0)}h${r(0.1 * ky)}" stroke="#fff" stroke-width="2" opacity=".9"/>`);
-  for (const [a, b] of [[0.88, 1.06], [0.49, 0.55]]) o.push(`<path d="M${P(Y1 + a, lerpLine(SB_N, a))}Q${P(Y1 + (a + b) / 2, 4)} ${P(Y1 + b, lerpLine(SB_N, b))}Z" fill="${C.reef}" stroke="#8d7f58" stroke-width=".8"/>`);
-  // 林中营房
-  const cy = CAMPS[0][1];
-  for (const d of [-0.03, 0, 0.03]) o.push(`<path d="M${P(cy + d - 0.008, groundAt(cy + d) + 1)}v-5l4,-3l4,3v5z" fill="#2f4a37" stroke="#d8e6c8" stroke-width=".6"/>`);
+// 天然玄武岩海蚀拱门: 横跨一线天水道北口 (东岬南侧 ~(1.21, 0.48) ↔ 东屿北脊 ~(1.56, 0.37)), 拱顶高约 105m
+const SEA_ARCH = { a: [1.22, 0.47], b: [1.55, 0.36], crownZ: 106, clearZ: 68, width: 28 };
 
-  // 基核壳体
-  const HULL = [[0.092, 146], [0.1, 178], [0.15, 186], [0.4, 165], [0.75, 112], [1.02, 72], [1.15, 22], [1.2, -90], [1.12, -300], [0.98, -560], [0.7, -660], [0.1, -672], [-0.25, -640], [-0.5, -560], [-0.42, -470], [-0.2, -340], [-0.05, -190], [0.0, -110], [0.02, -60], [0.045, 5], [0.07, 60], [0.086, 118]]
-    .map(([a, z]) => [a, z > 0 && a >= 0.15 ? Math.min(z, groundAt(Y0 + a) - 14) : z]);
-  o.push(`<path d="M${HULL.map(p => O(p[0], p[1])).join('L')}Z" fill="#39414d" fill-opacity=".66" stroke="${C.hull}" stroke-width="2.4" stroke-linejoin="round"/>`);
+// 外海海蚀剑峰 (南剑峰 260m, 底宽 <120m) 及附属海蚀黑石柱
+const SWORD_PEAK = { name: '南剑峰', x: 0.15, y: -1.62, r: 0.055, h: 260 };
+const STACKS = [
+  [0.15, -1.62, 260, 0.055, '南剑峰'],
+  [0.26, -1.56,  68, 0.022, ''],
+  [-0.34, -1.36, 46, 0.018, ''],
+  [-1.56, -1.12, 54, 0.020, ''],
+  [ 1.05, -1.16, 48, 0.019, ''],
+  [ 1.72,  0.52, 62, 0.021, ''],
+];
 
-  // 洞室
-  const vault = (a, b, z1, z2, arch, attrs) => `<path d="M${O(a, z1)}L${O(a, z2 - arch)}Q${O((a + b) / 2, z2 + arch)} ${O(b, z2 - arch)}L${O(b, z1)}Z" ${attrs}/>`;
-  const rrect = (a, b, z1, z2, attrs, rad = 6) => `<rect x="${r(SX(Y0 + a))}" y="${r(SZ(z2))}" width="${r((b - a) * ky)}" height="${r((z2 - z1) * kz)}" rx="${rad}" ${attrs}/>`;
-  const st = 'stroke="#241f1b" stroke-width="1"';
-  // 热沉导管
-  const hsOff = slopeOff(-338);
-  o.push(`<path d="M${O(0.22, -332)}L${O(hsOff, -338)}L${O(slopeOff(-410), -410)}" fill="none" stroke="#d1432b" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#arh)"/>`);
-  // 潜艇隧道、内港、机库
-  const gateOff = slopeOff(-80);
-  o.push(rrect(gateOff, 0.31, -90, -70, 'fill="#7db7e6" stroke="#0d2233" stroke-width="1"', 0));
-  o.push(vault(0.3, 0.75, -95, 24, 10, `fill="#eef4f8" ${st}`));
-  o.push(`<path d="M${O(0.3, -95)}L${O(0.3, 0)}L${O(0.75, 0)}L${O(0.75, -95)}Z" fill="#7db7e6" ${st}/>`);
-  o.push(`<g transform="translate(${r(SX(Y0 + 0.52))},${r(SZ(-30))})"><ellipse rx="10" ry="3" fill="#16222c"/><rect x="-2" y="-6" width="4" height="4" fill="#16222c"/></g>`);
-  o.push(vault(0.47, 0.84, 35, 78, 8, `fill="#dfe3e8" ${st}`));
-  // 机库发射:洞顶垂直发射井 + 南端水平弹射隧道
-  const vOff = 0.66, hOff = lerpLine(cliffPts.slice(3, 6).map(p => [p[1], p[0]]), 65) - Y0;
-  o.push(`<path d="M${O(vOff, 80)}L${O(vOff, groundAt(Y0 + vOff))}" stroke="#f4f1e6" stroke-width="5"/><path d="M${O(vOff, groundAt(Y0 + vOff) + 6)}L${O(vOff, groundAt(Y0 + vOff) + 130)}" stroke="${C.under}" stroke-width="1.8" stroke-dasharray="5 3" marker-end="url(#aro)"/>`);
-  o.push(rrect(hOff, 0.48, 58, 72, 'fill="#e6e1d6" stroke="#241f1b" stroke-width="1"', 0));
-  o.push(`<path d="M${O(hOff - 0.02, 65)}L${O(hOff - 0.46, 65)}" stroke="${C.under}" stroke-width="1.8" stroke-dasharray="5 3" marker-end="url(#aro)"/>`);
-  // 崖宅(半山腰斜切折板楔形悬挑 + 内凹暖光主厅与后方居住层 + 下层重工实验舱)
-  o.push(`<path d="M${O(0.07, 168)}L${O(0.156, 168)}L${O(0.156, 142)}L${O(0.078, 142)}Z" fill="#f5e4c3" stroke="#241f1b" stroke-width=".8"/>`);
-  o.push(`<path d="M${O(0.07, 168)}L${O(0.098, 168)}L${O(0.098, 142)}L${O(0.078, 142)}Z" fill="#f0a84b" stroke="#241f1b" stroke-width=".7"/>`);
-  o.push(`<path d="M${O(0.098, 176)}L${O(0.066, 168)}L${O(0.07, 167)}L${O(0.096, 168)}Z" fill="#5a656e" stroke="#1f252b" stroke-width=".8"/>`);
-  o.push(`<rect x="${r(SX(Y0 + 0.084))}" y="${r(SZ(138))}" width="${r(0.104 * ky)}" height="${r(18 * kz)}" fill="#ffb347" ${st}/>`);
-  o.push(`<path d="M${O(0.086, 120)}L${O(0.054, 120)}L${O(0.072, 118)}L${O(0.09, 115)}L${O(0.09, 120)}Z" fill="#5a656e" stroke="#1f252b" stroke-width=".7"/>`);
-  // 工坊、聚变堆、中枢
-  o.push(rrect(0.15, 0.5, -220, -125, `fill="#cdb79a" ${st}`, 9) + rrect(0.62, 0.98, -240, -140, `fill="#cdb79a" ${st}`, 9));
-  o.push(`<ellipse cx="${r(SX(Y0 + 0.3))}" cy="${r(SZ(-320))}" rx="${r(55 * ky / 1000 * 1.6)}" ry="${r(55 * kz)}" fill="#fff3c4" stroke="#b3541e" stroke-width="1.6"/><ellipse cx="${r(SX(Y0 + 0.3))}" cy="${r(SZ(-320))}" rx="6" ry="9" fill="#ff9d3b"/>`);
-  o.push(`<ellipse cx="${r(SX(Y0 + 0.95))}" cy="${r(SZ(-330))}" rx="${r(50 * ky / 1000 * 1.6)}" ry="${r(50 * kz)}" fill="#20303c" stroke="#7fd4ff" stroke-width="1.6"/><ellipse cx="${r(SX(Y0 + 0.95))}" cy="${r(SZ(-330))}" rx="5" ry="8" fill="#7fd4ff"/>`);
-  o.push(`<path d="M${O(0.39, -322)}L${O(0.87, -330)}" stroke="#f4f1e6" stroke-width="3"/>`);
-  // 地下城:像飞船内部一样分隔的舱室群,没有大空间
-  const DECKS = [[-432, [[0.05, 0.22], [0.26, 0.5]]], [-462, [[-0.08, 0.14], [0.18, 0.36], [0.4, 0.66]]], [-492, [[-0.18, 0.02], [0.06, 0.3], [0.34, 0.52], [0.56, 0.74]]], [-522, [[-0.12, 0.1], [0.14, 0.42], [0.46, 0.68]]], [-552, [[0.0, 0.2], [0.24, 0.44], [0.48, 0.6]]]];
-  const TINT = ['#ecdcb8', '#aac6da', '#d7e7da', '#d9c8e2', '#cbbfae', '#b9dcc2', '#dbb3a2', '#f0e2a4'];
-  o.push(`<path d="M${O(0.33, -440)}V${r(SZ(-570))}" stroke="#f4f1e6" stroke-width="3.5"/>`);
-  let mi = 0;
-  for (const [zt, mods] of DECKS) {
-    o.push(`<path d="M${O(mods[0][0], zt - 11.5)}H${r(SX(Y0 + mods[mods.length - 1][1]))}" stroke="#f4f1e6" stroke-width="3"/>`);
-    for (const [a, b] of mods) {
-      o.push(rrect(a, b, zt - 23, zt, `fill="${TINT[mi % TINT.length]}" ${st}`, 2.5));
-      for (let s = a + 0.035; s < b - 0.012; s += 0.035) o.push(`<path d="M${O(s, zt - 2)}V${r(SZ(zt - 21))}" stroke="#241f1b" stroke-opacity=".45" stroke-width=".7"/>`);
-      o.push(`<path d="M${O(a + 0.006, zt - 11.5)}H${r(SX(Y0 + b - 0.006))}" stroke="#241f1b" stroke-opacity=".35" stroke-width=".6"/>`);
-      mi++;
+const onMainLand = (x, y) => pip(coastPts, x, y);
+const onIslet = (x, y) => pip(isletPts, x, y);
+const onLand = (x, y) => onMainLand(x, y) || onIslet(x, y);
+
+// 计算主岛+东屿面积与范围
+let ext = [Infinity, -Infinity, Infinity, -Infinity];
+for (const p of [...coastPts, ...isletPts]) {
+  if (p[0] < ext[0]) ext[0] = p[0]; if (p[0] > ext[1]) ext[1] = p[0];
+  if (p[1] < ext[2]) ext[2] = p[1]; if (p[1] > ext[3]) ext[3] = p[1];
+}
+const polyArea = pts => {
+  let s = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) s += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
+  return Math.abs(s) * 0.5;
+};
+const area = polyArea(coastPts) + polyArea(isletPts);
+
+// ═════════ 2. 破火山口盆地、刀刃山脊与尖塔群地形 (3.1 版) ═════════
+const lakeLevel = 138;
+const meadowLevel = 165;
+
+const LAKE = { x: -0.42, y: -0.02, rx: 0.255, ry: 0.165, rot: 0.22, depth: 24 };
+const lakePts = blob(LAKE, 19, 64, 0.95);
+
+const MEADOW = { x: -0.25, y: -0.68, rx: 0.215, ry: 0.122, rot: -0.10 };
+const meadowPts = blob(MEADOW, 31, 56, 0.75);
+
+const FALLS = [0.10, 0.22]; // 火山口北缘崩塌缺口, 帘瀑 ~90m 落差
+const riverPts = [
+  [-0.17, 0.03], [-0.10, 0.07], [-0.03, 0.12], [0.04, 0.17], [0.10, 0.22], [0.10, 0.33], [0.10, 0.42],
+];
+// 汇入镜湖与风草甸的山涧溪流
+const feederPts = [
+  [[-0.86, -0.35], [-0.72, -0.22], [-0.58, -0.10]],
+  [[-0.68, 0.42], [-0.58, 0.24], [-0.50, 0.11]],
+  [[-0.25, -0.54], [-0.31, -0.34], [-0.36, -0.17]],
+];
+// 东峡谷与西裂谷冲沟线
+const gullyPts = [
+  [[0.95, -0.18], [1.03, -0.32], [1.11, -0.45], [1.18, -0.58]], // 东峡谷断裂槽
+  [[-0.75, -0.52], [-0.79, -0.60], [-0.82, -0.68]],              // 西裂谷上源
+  [[0.18, -0.56], [0.20, -0.64], [0.22, -0.72]],                 // 裂湾上源
+];
+
+// 马蹄形刀刃山脊折线: [x, y, 脊顶高程m, 横向半宽km]
+const RIM_SPINE = [
+  [-0.88,  1.62, 210, 0.20], // 西岬北端
+  [-1.08,  1.15, 215, 0.24], // 西岬中段
+  [-1.32,  0.52, 245, 0.28], // 西北脊
+  [-1.25, -0.42, 352, 0.26], // 西尖塔底座脊
+  [-1.40, -0.94, 340, 0.22], // 西崖角
+  [-0.92, -0.78, 330, 0.20], // 西裂谷绕脊
+  [-0.52, -1.00, 412, 0.17], // 主崖西肩
+  [-0.22, -1.13, 456, 0.15], // 主崖岬刀刃主脊 (距南岸 120m 达 460m 绝顶!)
+  [ 0.04, -0.90, 385, 0.17], // 裂湾西肩
+  [ 0.24, -0.64, 295, 0.18], // 裂湾北绕脊
+  [ 0.45, -0.92, 322, 0.19], // 裂湾东口脊
+  [ 0.86, -0.95, 290, 0.22], // 东南崖角
+  [ 0.95, -0.18, 122, 0.20], // 东峡谷分水鞍部 (断裂低鞍 ~115m)
+  [ 0.68, -0.25, 298, 0.23], // 东尖塔底座脊
+  [ 1.24,  0.14, 276, 0.20], // 一线天西壁高脊
+  [ 0.94,  0.74, 232, 0.20], // 东岬尖脊
+  [ 0.60,  0.68, 195, 0.18], // 黑砾湾东肩
+];
+
+// 黑色玄武岩尖塔与岬角高峰: [x, y, 拔起高度增量, 半径km, 名称, 标称海拔]
+const SPIRES = [
+  [-0.22, -1.13, 24, 0.095, '主崖岬',   460],
+  [-1.25, -0.42, 42, 0.105, '西尖塔',   365],
+  [ 0.68, -0.25, 38, 0.095, '东尖塔',   310],
+  [-1.39, -0.94, 22, 0.090, '西崖角',   340],
+  [ 0.86, -0.95, 20, 0.090, '东南崖角', 290],
+  [-0.88,  1.56, 18, 0.085, '西岬',     210],
+  [ 0.95,  0.75, 18, 0.080, '东岬',     220],
+];
+
+const HEADLANDS = [
+  ['主崖岬', -0.22, -1.25, 460],
+  ['西崖角', -1.45, -1.02, 340],
+  ['东南崖角', 0.92, -1.05, 290],
+];
+
+function rimField(x, y) {
+  let wSum = 0, hSum = 0, dMin = Infinity, wAtMin = 0.2;
+  for (let i = 0; i < RIM_SPINE.length - 1; i++) {
+    const a = RIM_SPINE[i], b = RIM_SPINE[i + 1];
+    const vx = b[0] - a[0], vy = b[1] - a[1], l2 = vx * vx + vy * vy;
+    const u = l2 > 1e-12 ? clamp(((x - a[0]) * vx + (y - a[1]) * vy) / l2) : 0;
+    const px = a[0] + u * vx, py = a[1] + u * vy;
+    const d = Math.hypot(x - px, y - py);
+    const hz = lerp(a[2], b[2], u), hw = lerp(a[3], b[3], u);
+    const wt = Math.exp(-((d / hw) ** 2) * 1.9) + 1e-5 / (d * d + 0.02);
+    wSum += wt; hSum += wt * hz;
+    if (d < dMin) { dMin = d; wAtMin = hw; }
+  }
+  return { h: hSum / wSum, d: dMin, w: wAtMin };
+}
+
+function H(x, y) {
+  // 东屿独立高程 (锯齿状山脊高达 280m)
+  if (onIslet(x, y)) {
+    const c = Math.cos(-ISLET.rot), s = Math.sin(-ISLET.rot);
+    const lx = (x - ISLET.x) * c - (y - ISLET.y) * s;
+    const ly = (x - ISLET.x) * s + (y - ISLET.y) * c;
+    const ridge = Math.max(0, 1 - Math.abs(lx) / (ISLET.rx * 0.98));
+    const endFade = Math.max(0, 1 - (ly / (ISLET.ry * 1.03)) ** 2);
+    const saw = 0.84 + 0.22 * ridged(lx * 14 + 3, ly * 11 - 2, 3, 701);
+    return Math.max(2, 282 * Math.pow(ridge, 0.72) * Math.pow(endFade, 0.48) * saw);
+  }
+
+  const rf = rimField(x, y);
+  // 刀刃山脊隆起
+  const ridgeProfile = Math.exp(-((rf.d / (rf.w * 1.18)) ** 1.75));
+  let z = 148 + (rf.h - 148) * ridgeProfile;
+
+  // 叠加柱状节理折线感与嶙峋山脊噪声
+  z += (14 * ridged(x * 3.4, y * 3.4, 3, 401) - 5) * clamp((z - 155) / 140);
+  z += 5.5 * fbm(x * 7.5, y * 7.5, 3, 409);
+
+  // 破火山口巨碗内部下凹 (镜湖 138m + 风草甸 165m)
+  const bx = (x - (-0.34)) / 0.62, by = (y - (-0.28)) / 0.76;
+  const bowl = sstep(1.18, 0.35, Math.hypot(bx, by));
+  const bowlFloor = lerp(140, 168, clamp((-0.18 - y) / 0.52)) + 3.5 * fbm(x * 5, y * 5, 2, 512);
+  z = lerp(z, bowlFloor, bowl * 0.90);
+
+  // 风草甸平坦火山灰台地 (~165m)
+  const mx = ((x - MEADOW.x) * Math.cos(-MEADOW.rot) - (y - MEADOW.y) * Math.sin(-MEADOW.rot)) / MEADOW.rx;
+  const my = ((x - MEADOW.x) * Math.sin(-MEADOW.rot) + (y - MEADOW.y) * Math.cos(-MEADOW.rot)) / MEADOW.ry;
+  const mMask = sstep(1.32, 0.72, Math.hypot(mx, my));
+  z = lerp(z, meadowLevel + 1.2 * fbm(x * 9, y * 9, 2, 611), mMask * 0.96);
+
+  // 镜湖碗底凹陷 (岸边 138.5m)
+  const lx = ((x - LAKE.x) * Math.cos(-LAKE.rot) - (y - LAKE.y) * Math.sin(-LAKE.rot)) / LAKE.rx;
+  const ly = ((x - LAKE.x) * Math.sin(-LAKE.rot) + (y - LAKE.y) * Math.cos(-LAKE.rot)) / LAKE.ry;
+  const lDist = Math.hypot(lx, ly);
+  const lMask = sstep(1.45, 0.96, lDist);
+  z = lerp(z, lakeLevel + 0.8, lMask * 0.97);
+
+  // 白水河玄武岩槽 (138m → 帘瀑顶 132m) 与北缘崩塌缺口 -> 黑砾湾峡湾谷底 (0m)
+  const dRiv = distPolyLine(riverPts.slice(0, 5), x, y);
+  const rivMask = sstep(0.11, 0.02, dRiv);
+  const rivProg = clamp((x - (-0.17)) / 0.27);
+  z = lerp(z, lerp(138.2, 130.0, rivProg), rivMask * 0.92);
+
+  // 帘瀑北侧至黑砾湾湾底: 从 (0.10, 0.22) 陡跌近百米至深潭与黑曜石砾滩
+  const fx = (x - 0.02) / 0.42, fy = (y - 0.50) / 0.34;
+  if (y > 0.16 && Math.abs(x - 0.02) < 0.52) {
+    const fjord = sstep(1.15, 0.35, Math.hypot(fx, (y - 0.48) / 0.30));
+    const stepDrop = sstep(0.18, 0.28, y); // 在 y=0.22 处急剧跌落 ~90m
+    const gorgeFloor = lerp(130, 8, stepDrop) * (1 - 0.75 * sstep(0.32, 0.44, y));
+    z = lerp(z, gorgeFloor, fjord * 0.95);
+  }
+
+  // 东峡谷古断裂深槽: 分水鞍部 (0.95,-0.18, ~115m) → 谷口 (1.18,-0.58, ~8m)
+  const dEastGully = distPolyLine(gullyPts[0], x, y);
+  if (dEastGully < 0.22) {
+    const tG = clamp(((x - 0.95) * 0.23 + (y - (-0.18)) * (-0.40)) / (0.23 * 0.23 + 0.40 * 0.40));
+    const gFloor = lerp(114, 10, Math.pow(tG, 0.85));
+    z = lerp(z, gFloor, sstep(0.20, 0.025, dEastGully) * 0.92);
+  }
+
+  // 黑色玄武岩尖塔刺出
+  for (const [sx, sy, sh, sr, , targetH] of SPIRES) {
+    const d = Math.hypot(x - sx, y - sy);
+    if (d < sr * 2.2) {
+      const cone = Math.pow(Math.max(0, 1 - d / (sr * 1.85)), 1.55);
+      z += sh * cone;
+      if (d < sr * 0.55) z = lerp(z, targetH, Math.pow(1 - d / (sr * 0.55), 1.3) * 0.88);
     }
   }
-  // 竖井与通道
-  o.push(`<path d="M${O(0.8, 35)}L${O(0.8, -473.5)}L${O(0.66, -473.5)}" fill="none" stroke="#f4f1e6" stroke-width="5"/><path d="M${O(0.8, 35)}L${O(0.8, -473.5)}" stroke="#241f1b" stroke-width=".8" stroke-dasharray="1 5"/>`);
-  o.push(`<path d="M${O(0.196, 165)}V${r(SZ(-70))}M${O(0.156, 150)}H${r(SX(Y0 + 0.196))}M${O(0.188, 122)}H${r(SX(Y0 + 0.196))}" fill="none" stroke="#f4f1e6" stroke-width="3.5"/>`);
-  // 深海脱出口与出路
-  const escOff = slopeOff(-503);
-  o.push(rrect(escOff, -0.17, -513, -493, 'fill="#7db7e6" stroke="#0d2233" stroke-width="1"', 0));
-  o.push(`<path d="M${O(-0.2, -503)}L${O(escOff - 0.2, -503)}" stroke="${C.esc}" stroke-width="2" marker-end="url(#arg)"/>`);
-  o.push(`<path d="M${O(0.86, -440)}L${O(0.86, 22)}" stroke="${C.esc}" stroke-width="2" marker-end="url(#arg)"/>`);
-  // 编号
-  const badge = (y, z, nn) => `<g transform="translate(${r(SX(y))},${r(SZ(z))})"><circle r="7.5" fill="#fff" stroke="${C.ink}" stroke-width="1"/><text y="3.6" class="xs b mid">${nn}</text></g>`;
-  o.push(badge(Y0 - 0.06, 150, 1) + badge(Y0 + 0.65, 56, 2) + badge(Y0 + 0.62, -55, 3) + badge(Y0 + 0.32, -172, 4) + badge(Y0 + 0.3, -356, 5) + badge(Y0 + 0.95, -366, 6) + badge(Y0 + 0.82, -535, 7));
+
+  return Math.max(1.5, z);
+}
+
+// 扫描全岛最高点
+let peak = { x: -0.22, y: -1.21, h: 0 };
+for (let y = -1.35; y <= 1.70; y += 0.01) {
+  for (let x = -1.95; x <= 1.82; x += 0.01) {
+    if (!onLand(x, y) || pip(lakePts, x, y)) continue;
+    const h = H(x, y);
+    if (h > peak.h) peak = { x, y, h };
+  }
+}
+
+// ═════════ 3. 基地设施、隧道、礁盘与幻域浮标 (3.1 版) ═════════
+// 崖宅岸线锚点: 主崖岬绝壁正南
+const villaCoast = (() => {
+  let best = [-0.22, -1.25], bd = Infinity;
+  for (const s of coast) {
+    const d = (s.p[0] - (-0.22)) ** 2 + (s.p[1] - (-1.25)) ** 2;
+    if (d < bd) { bd = d; best = s.p; }
+  }
+  return best;
+})();
+
+// 岩隙营房 (唯一地面营区, 约 100 名作战人员, 镜湖西侧背风峡谷岩壁褶皱内)
+const CAMPS = [
+  [-0.85, 0.15, '岩隙营房'],
+];
+// 四处峡谷/峡湾出击暗门 + 帘瀑水帘暗门
+const SALLY = [
+  [-0.96,  0.34], // 西峡谷岩壁暗门
+  [-0.50,  0.64], // 黑砾湾西壁暗门
+  [ 0.42,  0.52], // 黑砾湾东壁暗门
+  [ 1.07, -0.38], // 东峡谷岩壁暗门
+];
+// 风草甸草皮下三座机库顶部垂直发射井
+const SILOS = [
+  [-0.36, -0.70],
+  [-0.25, -0.66],
+  [-0.14, -0.71],
+];
+// 机库中心 (风草甸下方, 主崖后方 420-760m)
+const HANGAR_C = [-0.25, -0.68];
+
+const snapCoast = target => {
+  let best = target, bd = Infinity;
+  for (const s of coast) {
+    const d = (s.p[0] - target[0]) ** 2 + (s.p[1] - target[1]) ** 2;
+    if (d < bd) { bd = d; best = s.p; }
+  }
+  return best;
+};
+
+// 三条水平电磁弹射隧道 (海拔 95m / 100m / 90m)
+const TUNNELS = [
+  { name: '南发射口', start: [-0.25, -0.80], exit: snapCoast([-0.25, -1.25]), z: 95 },
+  { name: '西发射口', start: [-0.42, -0.68], exit: snapCoast([-0.82, -0.69]), z: 100 },
+  { name: '东发射口', start: [-0.10, -0.68], exit: snapCoast([ 0.22, -0.74]), z: 90 },
+].map(t => ({ ...t, len: Math.hypot(t.exit[0] - t.start[0], t.exit[1] - t.start[1]) }));
+
+// 两座潜艇水下闸门
+const MAIN_GATE = { pos: [villaCoast[0], villaCoast[1] - 0.08], depth: -80, len: 0.35 };
+const WEST_GATE = (() => {
+  const pos = snapCoast([-1.69, -0.63]);
+  const wp = [-0.82, -0.52], port = [-0.32, -0.78];
+  const len = Math.hypot(pos[0] - wp[0], pos[1] - wp[1]) + Math.hypot(wp[0] - port[0], wp[1] - port[1]);
+  return { pos, wp, port, depth: -60, len };
+})();
+
+// 北侧黑砾湾外暗礁带与水下礁盘 (300-600m 外海 + 西岬外缘), 留出 (-0.15, 0.95) 深水曲折航道槽
+const channel = [-0.15, 0.95];
+const channelPath = [[-0.22, 1.48], [-0.15, 0.95], [-0.06, 0.66], [0.02, 0.47]];
+const reefs = (() => {
+  const rng = mulberry32(3107), out = [];
+  const candidates = [
+    [-0.46, 0.96, 0.09, 0.05, 0.3, false],
+    [-0.36, 1.18, 0.08, 0.05, -0.2, false],
+    [ 0.14, 0.88, 0.10, 0.055, 0.2, false],
+    [ 0.36, 1.04, 0.09, 0.05, -0.3, false],
+    [ 0.05, 1.16, 0.08, 0.045, 0.4, false],
+    [ 0.58, 1.08, 0.085, 0.048, 0.1, false],
+    [-0.62, 1.24, 0.075, 0.045, 0.5, false],
+    [-1.08, 1.78, 0.09, 0.05, -0.4, false],
+    [-1.42, 1.38, 0.08, 0.045, 0.3, false],
+    [-1.65, 1.02, 0.07, 0.04, -0.2, false],
+    [ 0.88, 1.04, 0.075, 0.042, 0.2, false],
+    // 小型暗礁丛/远古人工共生礁头
+    [-0.30, 0.80, 0.035, 0.028, 0, true],
+    [ 0.24, 0.72, 0.036, 0.026, 0.4, true],
+    [ 0.02, 0.98, 0.032, 0.025, -0.3, true],
+    [-0.54, 1.08, 0.034, 0.026, 0.2, true],
+    [ 0.48, 0.92, 0.033, 0.025, -0.1, true],
+    [-1.28, 1.62, 0.036, 0.028, 0.1, true],
+  ];
+  candidates.forEach((c, idx) => {
+    if (distPolyLine(channelPath, c[0], c[1]) < 0.085) return;
+    out.push({ x: c[0], y: c[1], rx: c[2], ry: c[3], rot: c[4], head: c[5], seed: 40 + idx * 7 + Math.floor(rng() * 5) });
+  });
+  return out;
+})();
+
+// 幻域浮标: 13 座不规则散布在岛外 2~3.1 km 洋面上
+const gens = (() => {
+  const rng = mulberry32(9031), out = [], n = 13;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + (rng() - 0.5) * 0.26;
+    const rad = 2.15 + rng() * 0.55;
+    out.push([r(Math.cos(a) * rad * 1.12 - 0.10, 3), r(Math.sin(a) * rad * 0.96 + 0.12, 3)]);
+  }
+  return out;
+})();
+
+// 外海等深归一化函数 U(x,y): 南东深潜崖极陡, 北侧黑砾湾外略缓形成暗礁架
+function U(x, y) {
+  const dMain = Math.sqrt(dist2Pts(coastPts, x, y));
+  const dIsl = Math.sqrt(dist2Pts(isletPts, x, y));
+  const d = Math.min(dMain, dIsl);
+  const northShelf = y > 0.35 && x > -1.65 && x < 1.05 ? 0.52 : 0.14;
+  return d / northShelf;
+}
+
+// ═════════ 4. 主崖岬三段式剖面与深潜崖水下坡面 (3.1 版, 0 → 460m) ═════════
+// s 为从海岸基点向岛内水平距离 (m), z 为海拔 (m)
+// 底层 0~+40m 崩积巨石裙与陡坎; 中层 +40~+250m 约 65° 阶梯玄武岩壁 (80°陡坎 + 8~15m 碎石窄台);
+// 上层 +250~+460m 近乎垂直的柱状节理绝壁 (+410~+445m 平直岩槽嵌崖宅, +445~+460m 刀刃山脊)
+const CLIFF = [
+  [  0,   0],
+  [ 10,  14],
+  [ 18,  40], // 底层顶 +40m
+  [ 28,  92],
+  [ 38,  98], // 窄台 1 (10m 宽, 南发射口 +95m 在此段陡壁)
+  [ 50, 158],
+  [ 61, 165], // 窄台 2 (11m 宽)
+  [ 74, 238],
+  [ 84, 250], // 中层顶 +250m
+  [ 92, 335], // 上层柱状节理绝壁
+  [ 97, 410], // 崖宅底部锚固岩槽下缘 +410m
+  [100, 442], // 崖宅顶缘肩部 +442m (平直陡峭岩槽)
+  [112, 456],
+  [124, 460], // 刀刃山脊绝顶 +460m
+];
+// 深潜崖水下剖面 (s <= 0, 离岸 120m 深 -180m, 300m 外深 -350m, 1000m 外深 -750m)
+const APRON = [
+  [-1000, -760],
+  [ -600, -540],
+  [ -300, -350],
+  [ -120, -180],
+  [  -45,  -82], // 主闸门 -80m 藏在此处崩积巨石裙下
+  [  -18,  -40],
+  [    0,    0],
+];
+
+// ═════════ 5. 公共 SVG 样式与辅助函数 ═════════
+const FONT = `'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif`;
+const C = {
+  ink: '#1a252e',
+  sub: '#485966',
+  seaDeep: '#9eb8c9',
+  seaMid: '#b5ccd9',
+  seaShallow: '#cbe0ea',
+  strait: '#87a6ba',
+  forest: '#6b8568',
+  forestHigh: '#829978',
+  meadow: '#b7c78f',
+  basalt: '#6e737a',
+  basaltDark: '#474c53',
+  obsidian: '#3d434a',
+  lake: '#4d7f94',
+  hull: '#435361',
+  chamber: '#e5dfd3',
+  tunnel: '#9e4733',
+  titanium: '#8e9ba6',
+  titaniumLight: '#b8c4ce',
+  glass: '#253846',
+  amber: '#e9a94c',
+};
+
+const BASE_CSS = `
+  text { font-family: ${FONT}; fill: ${C.ink}; }
+  .title { font-size: 16px; font-weight: 700; }
+  .sub { font-size: 11.5px; fill: ${C.sub}; }
+  .t { font-size: 12.5px; }
+  .s { font-size: 11px; }
+  .xs { font-size: 9.8px; fill: ${C.sub}; }
+  .b { font-weight: 700; }
+  .mid { text-anchor: middle; }
+  .end { text-anchor: end; }
+  .halo { paint-order: stroke; stroke: rgba(255,255,255,.86); stroke-width: 3.2px; stroke-linejoin: round; }
+  .dhalo { paint-order: stroke; stroke: rgba(226,236,242,.88); stroke-width: 3px; stroke-linejoin: round; }
+  .whalo { fill: #f3f7fa; paint-order: stroke; stroke: rgba(20,30,38,.85); stroke-width: 3px; stroke-linejoin: round; }
+`;
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const txt = (x, y, s, cls = 's') => `<text x="${r(x)}" y="${r(y)}" class="${cls}">${esc(s)}</text>`;
+const pathPts = (pts, close = false) => 'M' + pts.map(p => `${r(p[0])},${r(p[1])}`).join('L') + (close ? 'Z' : '');
+
+// ═════════ 图 1: 平面图 (planSVG) ═════════
+function planSVG() {
+  const W = 960, Hh = 740, FX = 56, FY = 58, FW = 848, FH = 620;
+  // 视野涵盖幻域浮标圈: x ∈ [-3.05, 3.05] (6.1 km), y ∈ [-2.15, 2.30] (4.45 km) -> 等比例
+  const xMin = -3.05, xMax = 3.05, yMin = -2.12, yMax = 2.33;
+  const k = Math.min(FW / (xMax - xMin), FH / (yMax - yMin));
+  const ox = FX + (FW - (xMax - xMin) * k) * 0.5;
+  const oy = FY + (FH - (yMax - yMin) * k) * 0.5;
+  const X = x => ox + (x - xMin) * k;
+  const Y = y => oy + (yMax - y) * k;
+  const P = p => [X(p[0]), Y(p[1])];
+
+  // 计算地形网格用于提取等高线
+  const Gp = { x0: -2.05, y0: -1.40, step: 0.018, nx: 220, ny: 178 };
+  const hg = new Float32Array(Gp.nx * Gp.ny);
+  for (let j = 0; j < Gp.ny; j++) for (let i = 0; i < Gp.nx; i++) {
+    const x = Gp.x0 + i * Gp.step, y = Gp.y0 + j * Gp.step;
+    hg[j * Gp.nx + i] = onLand(x, y) ? H(x, y) : -20;
+  }
+
+  // 外海深潜等深线网格
+  const Gs = { x0: xMin, y0: yMin, step: 0.045, nx: 138, ny: 101 };
+  const sg = new Float32Array(Gs.nx * Gs.ny);
+  for (let j = 0; j < Gs.ny; j++) for (let i = 0; i < Gs.nx; i++) {
+    const x = Gs.x0 + i * Gs.step, y = Gs.y0 + j * Gs.step;
+    if (onLand(x, y)) { sg[j * Gs.nx + i] = 10; continue; }
+    const d = Math.min(Math.sqrt(dist2Pts(coastPts, x, y)), Math.sqrt(dist2Pts(isletPts, x, y))) * 1000;
+    const shelf = y > 0.35 && x > -1.6 && x < 1.0 ? 0.42 : 1.0;
+    sg[j * Gs.nx + i] = lerpLine(APRON, -d * shelf);
+  }
+
+  const o = [];
+  o.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${Hh}">`);
+  o.push(`<defs>
+    <style>${BASE_CSS}</style>
+    <clipPath id="frame1"><rect x="${FX}" y="${FY}" width="${FW}" height="${FH}"/></clipPath>
+    <clipPath id="landClip"><path d="${pathPts(coastPts.map(P), true)} ${pathPts(isletPts.map(P), true)}"/></clipPath>
+    <radialGradient id="oceanGrad" cx="48%" cy="48%" r="65%">
+      <stop offset="0%" stop-color="${C.seaMid}"/>
+      <stop offset="65%" stop-color="${C.seaDeep}"/>
+      <stop offset="100%" stop-color="#8aa7ba"/>
+    </radialGradient>
+  </defs>`);
+
+  o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
+  o.push(txt(FX, 28, '岛屿基地 · 平面总图 (3.1 版)', 'title'));
+  o.push(txt(FX, 46, '半崩塌破火山口巨碗 · 460 米刀刃主峰 · 黑砾湾峡湾 · 一线天水道与东屿 · 外海幻域浮标环', 'sub'));
+
+  o.push(`<g clip-path="url(#frame1)">`);
+  o.push(`<rect x="${FX}" y="${FY}" width="${FW}" height="${FH}" fill="url(#oceanGrad)"/>`);
+
+  // 北侧暗礁架浅水晕染
+  o.push(`<ellipse cx="${r(X(-0.05))}" cy="${r(Y(0.88))}" rx="${r(0.95 * k)}" ry="${r(0.52 * k)}" fill="${C.seaShallow}" opacity="0.55"/>`);
+
+  // 水下等深线 (-180m, -350m, -600m)
+  for (const [dep, op] of [[-180, 0.36], [-350, 0.28], [-600, 0.20]]) {
+    const lines = marchSquares(sg, Gs, dep);
+    for (const ln of lines) o.push(`<path d="${pathPts(ln.map(P))}" fill="none" stroke="#4f6d80" stroke-width="0.8" stroke-dasharray="4 3" opacity="${op}"/>`);
+  }
+
+  // 幻域中环示意场边界与浮标
+  const hullLoop = catmullClosed(gens.map(g => [g[0], g[1]]), 10);
+  o.push(`<path d="${pathPts(hullLoop.map(P), true)}" fill="none" stroke="#4f6b7d" stroke-width="1.1" stroke-dasharray="7 5" opacity="0.65"/>`);
+  for (const g of gens) {
+    o.push(`<circle cx="${r(X(g[0]))}" cy="${r(Y(g[1]))}" r="3.1" fill="#2c3e4c" stroke="#eef4f7" stroke-width="1"/>`);
+  }
+
+  // 北侧水下暗礁盘与深水曲折航道
+  for (const rf of reefs) {
+    const bp = blob(rf, rf.seed, 24, 1.1).map(P);
+    o.push(`<path d="${pathPts(bp, true)}" fill="${rf.head ? '#687e83' : '#7f9ba3'}" stroke="#536b73" stroke-width="0.7" opacity="0.82"/>`);
+  }
+  o.push(`<path d="${pathPts(channelPath.map(P))}" fill="none" stroke="#2d5870" stroke-width="1.6" stroke-dasharray="5 3"/>`);
+
+  // 主岛与东屿底色 (云雾林)
+  o.push(`<path d="${pathPts(coastPts.map(P), true)}" fill="${C.forest}"/>`);
+  o.push(`<path d="${pathPts(isletPts.map(P), true)}" fill="${C.forest}"/>`);
+
+  // 岛内高程分层设色 (剪裁于陆地内)
+  o.push(`<g clip-path="url(#landClip)">`);
+  for (const [lv, col, op] of [[220, C.forestHigh, 0.72], [290, '#7c7e78', 0.85], [350, C.basalt, 0.92], [410, C.basaltDark, 0.95]]) {
+    for (const ln of marchSquares(hg, Gp, lv)) {
+      if (ln.length > 6) o.push(`<path d="${pathPts(ln.map(P), true)}" fill="${col}" opacity="${op}"/>`);
+    }
+  }
+  // 风草甸火山灰台地
+  o.push(`<path d="${pathPts(meadowPts.map(P), true)}" fill="${C.meadow}" stroke="#7f8f5e" stroke-width="0.9"/>`);
+  // 黑砾湾黑曜石砾滩
+  const beachSeg = coast.filter(s => s.kind === 'b').map(s => s.p);
+  if (beachSeg.length > 2) {
+    const bPoly = [...beachSeg, [0.22, 0.34], [-0.05, 0.34], [-0.32, 0.38]];
+    o.push(`<path d="${pathPts(bPoly.map(P), true)}" fill="${C.obsidian}"/>`);
+  }
+  // 等高线 (每 50m 一条, 100/200/300/400 加粗)
+  for (let lv = 50; lv <= 450; lv += 50) {
+    const major = lv % 100 === 0;
+    for (const ln of marchSquares(hg, Gp, lv)) {
+      o.push(`<path d="${pathPts(ln.map(P))}" fill="none" stroke="#263129" stroke-width="${major ? 0.85 : 0.48}" opacity="${major ? 0.58 : 0.36}"/>`);
+    }
+  }
+  // 山涧与白水河 + 镜湖
+  for (const fd of feederPts) o.push(`<path d="${pathPts(fd.map(P))}" fill="none" stroke="${C.lake}" stroke-width="1.1" opacity="0.8"/>`);
+  o.push(`<path d="${pathPts(riverPts.map(P))}" fill="none" stroke="#3c738a" stroke-width="2.2"/>`);
+  o.push(`<path d="${pathPts(lakePts.map(P), true)}" fill="${C.lake}" stroke="#2f5668" stroke-width="1.1"/>`);
+  // 东峡谷断裂溪槽
+  o.push(`<path d="${pathPts(gullyPts[0].map(P))}" fill="none" stroke="#3a4540" stroke-width="1.3" stroke-dasharray="3 2"/>`);
   o.push(`</g>`);
 
-  // 海平面、轴、边框
-  o.push(`<line x1="${x0}" y1="${zero}" x2="${r(right)}" y2="${zero}" stroke="#fff" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>`);
-  for (const z of [400, 200, 0, -200, -400, -600]) o.push(`<line x1="${x0 - 5}" y1="${r(SZ(z))}" x2="${x0}" y2="${r(SZ(z))}" stroke="${C.ink}"/>` + txt(x0 - 8, SZ(z) + 3.5, z > 0 ? '+' + z : z, 'xs end'));
-  o.push(txt(x0 - 8, top - 6, '米', 'xs end'));
-  o.push(`<rect x="${x0}" y="${r(top)}" width="${r(right - x0)}" height="${r(bot - top)}" fill="none" stroke="${C.ink}"/>`);
-  o.push(txt(x0 + 6, top + 16, 'B(南)', 't b halo') + txt(right - 6, top + 16, 'B′(北)', 't b halo end'));
+  // 海岸线与绝壁短齿线 (hachures)
+  o.push(`<path d="${pathPts(coastPts.map(P), true)}" fill="none" stroke="#1e2930" stroke-width="1.5"/>`);
+  o.push(`<path d="${pathPts(isletPts.map(P), true)}" fill="none" stroke="#1e2930" stroke-width="1.4"/>`);
+  for (let i = 0; i < coast.length; i += 3) {
+    const s = coast[i];
+    if (s.kind !== 'c' && s.kind !== 'r') continue;
+    const prev = coast[(i - 1 + coast.length) % coast.length].p, next = coast[(i + 1) % coast.length].p;
+    let nx = -(next[1] - prev[1]), ny = next[0] - prev[0]; // 向陆内法线
+    const L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
+    const len = s.kind === 'c' ? 0.032 + 0.025 * (s.hc / 460) : 0.020;
+    const p0 = P(s.p), p1 = P([s.p[0] + nx * len, s.p[1] + ny * len]);
+    o.push(`<line x1="${r(p0[0])}" y1="${r(p0[1])}" x2="${r(p1[0])}" y2="${r(p1[1])}" stroke="#1c2226" stroke-width="0.9" opacity="0.78"/>`);
+  }
 
-  // 标注
-  const lead = (a, b) => o.push(`<path d="M${P(...a)}L${P(...b)}" stroke="${C.ink}" stroke-width=".8" fill="none"/>`);
-  o.push(txt(SX(Y0 - 0.05), SZ(crestZ + 30), `主崖岬(剖面处 ${Math.round(crestZ)} m)`, 't b halo end'));
-  o.push(txt(SX(Y0 + hOff - 0.48), SZ(65) - 5, '水平发射', 'xs halo end') + txt(SX(Y0 + vOff) + 6, SZ(groundAt(Y0 + vOff) + 126), '垂直发射', 'xs halo'));
-  lead([MEADOW.y + 0.1, groundAt(MEADOW.y + 0.1) + 10], [MEADOW.y + 0.16, 296]); o.push(txt(SX(MEADOW.y + 0.17), SZ(300), `风草甸 ${meadowLevel} m`, 's halo'));
-  lead([cy, groundAt(cy) + 26], [cy + 0.02, 232]); o.push(txt(SX(cy + 0.03), SZ(236), '林中营房', 's halo'));
-  lead([(l0 + l1) / 2, lakeLevel + 8], [(l0 + l1) / 2 + 0.03, 176]); o.push(txt(SX((l0 + l1) / 2 + 0.04), SZ(180), `镜湖 ${lakeLevel} m`, 's halo'));
-  o.push(txt(SX(Y1 + 0.02), SZ(46), '月湾沙滩', 's halo') + txt(SX(Y1 + 0.5), SZ(96), '潟湖与珊瑚丛', 's halo mid') + txt(SX(Y1 + 0.98), SZ(46), '礁盘', 's halo mid'));
-  lead([Y1 + 0.5, 8], [Y1 + 0.5, 78]);
-  o.push(txt(SX(gN), SZ(70), '幻域浮标', 's halo mid') + txt(SX(gS), SZ(70), '幻域浮标', 's halo mid'));
-  o.push(txt(SX(1.35), SZ(352), '幻域中环(视觉隐形 · 脑波干扰)', 's halo mid', `fill="${C.field}"`));
-  lead([Y0 + 0.04, 158], [Y0 - 0.3, 160]); o.push(txt(SX(Y0 - 0.32), SZ(160) + 4, '崖宅', 's halo end'));
-  lead([Y0 - 0.05, -10], [Y0 - 0.3, -36]); o.push(txt(SX(Y0 - 0.32), SZ(-36) + 4, '崖脚崩积巨石裙', 's dhalo end'));
-  lead([Y0 + gateOff - 0.01, -80], [Y0 - 0.38, -80]); o.push(txt(SX(Y0 - 0.4), SZ(-80) + 4, '主闸门 −80 m', 's dhalo end'));
-  o.push(txt(SX(Y0 + escOff - 0.24), SZ(-503) - 22, '深海脱出口 −500 m', 's b dhalo mid') + txt(SX(Y0 + escOff - 0.24), SZ(-503) - 9, '脱出艇由此驶入深海', 'xs dhalo mid'));
-  o.push(txt(SX(Y0 - 1.22), SZ(-292), '热沉导管', 's b dhalo') + txt(SX(Y0 - 1.22), SZ(-292) + 13, '废热排入深层冷水', 'xs dhalo'));
-  lead([Y0 + slopeOff(-380) - 0.02, -380], [Y0 - 0.74, -318]);
+  // 刀刃山脊脊线与玄武岩尖塔符号
+  o.push(`<path d="${pathPts(RIM_SPINE.map(p => P([p[0], p[1]])))}" fill="none" stroke="#2c3036" stroke-width="1.3" stroke-dasharray="5 3" opacity="0.72"/>`);
+  for (const [sx, sy, , , name, hz] of SPIRES) {
+    const [px, py] = P([sx, sy]);
+    o.push(`<polygon points="${r(px)},${r(py - 5.2)} ${r(px - 4.6)},${r(py + 3.6)} ${r(px + 4.6)},${r(py + 3.6)}" fill="#1d2228" stroke="#fff" stroke-width="0.9"/>`);
+    if (name) o.push(txt(px + 7, py + 3, `${name} ${hz}m`, 'xs b halo'));
+  }
 
-  // 图例
-  const gx = SX(Y1 - 0.5), gy0 = SZ(-150);
-  CHAMBERS.forEach(([name, rng2, desc], i) => {
-    const gy = gy0 + i * 27;
-    o.push(`<g transform="translate(${r(gx)},${r(gy)})"><circle r="7.5" fill="#fff" stroke="${C.ink}" stroke-width="1"/><text y="3.6" class="xs b mid">${i + 1}</text></g>`);
-    o.push(txt(gx + 14, gy - 1, `${name} ${rng2}`, 's b halo') + txt(gx + 14, gy + 11, desc, 'xs halo'));
-  });
-  const ly = gy0 + CHAMBERS.length * 27 + 4;
-  o.push(`<path d="M${r(gx - 8)},${r(ly)}h16" stroke="${C.hull}" stroke-width="2.4"/>` + txt(gx + 14, ly + 4, '基核壳体(远古遗留)', 's b halo'));
-  o.push(`<path d="M${r(gx + 150)},${r(ly)}h16" stroke="${C.esc}" stroke-width="2" marker-end="url(#arg)"/>` + txt(gx + 174, ly + 4, '地下城的出路', 's b halo'));
-  o.push(txt(gx - 8, ly + 24, `西闸门在西端崖下,不在本剖面内,经约 ${WEST_GATE.len.toFixed(1)} 公里的水下隧道通到内港。`, 'xs halo'));
-  o.push(`<g transform="translate(${x0},${r(bot + 16)})"><rect width="${ky}" height="5" fill="${C.ink}"/><text x="${ky + 8}" y="6" class="xs">1 公里(水平)</text></g>`);
-  o.push('</svg>');
+  // 一线天水道北口天然海蚀拱门
+  {
+    const [ax, ay] = P(SEA_ARCH.a), [bx, by] = P(SEA_ARCH.b);
+    o.push(`<line x1="${r(ax)}" y1="${r(ay)}" x2="${r(bx)}" y2="${r(by)}" stroke="#2d3136" stroke-width="4.5" stroke-linecap="round"/>`);
+    o.push(`<line x1="${r(ax)}" y1="${r(ay)}" x2="${r(bx)}" y2="${r(by)}" stroke="#b8c2c9" stroke-width="1.6" stroke-dasharray="3 2"/>`);
+  }
+
+  // 南剑峰 (260m) 与外海海蚀柱
+  for (const [sx, sy, sh, sr, name] of STACKS) {
+    const [px, py] = P([sx, sy]), pr = Math.max(2.6, sr * k);
+    o.push(`<circle cx="${r(px)}" cy="${r(py)}" r="${r(pr + 2.2)}" fill="none" stroke="#eef6fa" stroke-width="1" opacity="0.75"/>`);
+    o.push(`<polygon points="${r(px)},${r(py - pr)} ${r(px - pr * 0.9)},${r(py + pr * 0.8)} ${r(px + pr * 0.9)},${r(py + pr * 0.8)}" fill="#1f242a" stroke="#eef4f8" stroke-width="0.8"/>`);
+    if (name) o.push(txt(px + 8, py + 4, `${name} ${sh}m`, 's b halo'));
+  }
+
+  // 地下基核壳体范围虚线、机库与弹射隧道、潜艇水下隧道
+  o.push(`<ellipse cx="${r(X(-0.28))}" cy="${r(Y(-0.62))}" rx="${r(0.58 * k)}" ry="${r(0.52 * k)}" fill="none" stroke="${C.hull}" stroke-width="1.3" stroke-dasharray="8 4" opacity="0.72"/>`);
+  // 潜艇水下航道 (主闸门 -80m, 西闸门 -60m)
+  o.push(`<path d="${pathPts([MAIN_GATE.pos, [-0.24, -0.85]].map(P))}" fill="none" stroke="#225577" stroke-width="1.8" stroke-dasharray="4 3"/>`);
+  o.push(`<path d="${pathPts([WEST_GATE.pos, WEST_GATE.wp, WEST_GATE.port].map(P))}" fill="none" stroke="#225577" stroke-width="1.8" stroke-dasharray="4 3"/>`);
+  for (const g of [MAIN_GATE, WEST_GATE]) {
+    const [gx, gy] = P(g.pos);
+    o.push(`<rect x="${r(gx - 3.5)}" y="${r(gy - 3.5)}" width="7" height="7" fill="#225577" stroke="#fff" stroke-width="0.9"/>`);
+  }
+
+  // 三条水平弹射隧道
+  for (const t of TUNNELS) {
+    const [sx, sy] = P(t.start), [ex, ey] = P(t.exit);
+    o.push(`<line x1="${r(sx)}" y1="${r(sy)}" x2="${r(ex)}" y2="${r(ey)}" stroke="${C.tunnel}" stroke-width="1.8" stroke-dasharray="5 3"/>`);
+    o.push(`<circle cx="${r(ex)}" cy="${r(ey)}" r="3.2" fill="${C.tunnel}" stroke="#fff" stroke-width="0.9"/>`);
+  }
+  // 风草甸下三座垂直发射井
+  for (const s of SILOS) {
+    const [sx, sy] = P(s);
+    o.push(`<circle cx="${r(sx)}" cy="${r(sy)}" r="2.8" fill="none" stroke="${C.tunnel}" stroke-width="1.3"/>`);
+  }
+  // 岩隙营房 (唯一地面营区) 与出击口
+  for (const [cx, cy, nm] of CAMPS) {
+    const [px, py] = P([cx, cy]);
+    o.push(`<rect x="${r(px - 4)}" y="${r(py - 3)}" width="8" height="6" fill="#d99b38" stroke="#1d252c" stroke-width="1"/>`);
+    o.push(txt(px - 7, py - 6, `${nm}(~100人)`, 'xs b halo end'));
+  }
+  for (const sp of SALLY) {
+    const [px, py] = P(sp);
+    o.push(`<circle cx="${r(px)}" cy="${r(py)}" r="2.1" fill="#d99b38" stroke="#1d252c" stroke-width="0.7"/>`);
+  }
+  // 崖宅标记 (+412~+440m 竖向堡垒)
+  {
+    const [vx, vy] = P([villaCoast[0], villaCoast[1] + 0.03]);
+    o.push(`<rect x="${r(vx - 4.5)}" y="${r(vy - 3.5)}" width="9" height="7" fill="${C.amber}" stroke="#182026" stroke-width="1.2"/>`);
+    o.push(txt(vx - 8, vy + 14, '崖宅 (+412~+440m)', 's b halo end'));
+  }
+
+  // B–B′ 南北剖面切割线 (x = -0.25)
+  const secX = -0.25;
+  o.push(`<line x1="${r(X(secX))}" y1="${r(Y(-1.52))}" x2="${r(X(secX))}" y2="${r(Y(0.75))}" stroke="#1f2d38" stroke-width="1.1" stroke-dasharray="9 4" opacity="0.65"/>`);
+  o.push(txt(X(secX) + 5, Y(-1.47), 'B (南北剖面)', 'xs b halo'));
+  o.push(txt(X(secX) + 5, Y(0.72), 'B′', 'xs b halo'));
+
+  // 关键地名标注
+  o.push(txt(X(LAKE.x), Y(LAKE.y) + 4, `镜湖 ${lakeLevel}m`, 's b whalo mid'));
+  o.push(txt(X(MEADOW.x) + 42, Y(MEADOW.y) + 4, `风草甸 ~${meadowLevel}m`, 'xs b halo'));
+  o.push(txt(X(FALLS[0]) + 8, Y(FALLS[1]) + 3, '帘瀑 (落差~90m)', 'xs b halo'));
+  o.push(txt(X(0.02), Y(0.56), '黑砾湾 (黑曜石砾滩)', 's b halo mid'));
+  o.push(txt(X(-0.15), Y(1.30), '北暗礁航道', 'xs b dhalo mid'));
+  o.push(txt(X(ISLET.x) + 16, Y(ISLET.y), `东屿 ${ISLET.h}m`, 's b halo'));
+  o.push(txt(X(1.37), Y(0.18), '一线天水道', 'xs b halo end'));
+  o.push(txt(X(1.42), Y(0.56), '天然海蚀拱门 (百米高)', 'xs b halo'));
+  o.push(txt(X(1.22), Y(-0.62), '东峡谷', 'xs b halo'));
+  o.push(txt(X(1.50), Y(-0.10), '东礁滩', 'xs halo'));
+  o.push(txt(X(-1.95), Y(0.02), '西礁滩', 'xs halo end'));
+  o.push(txt(X(-0.84), Y(-0.76), '西裂谷 · 西发射口', 'xs halo end'));
+  o.push(txt(X(0.26), Y(-0.80), '裂湾 · 东发射口', 'xs halo'));
+  o.push(txt(X(WEST_GATE.pos[0]) - 6, Y(WEST_GATE.pos[1]) + 4, '西闸门 −60m', 'xs b dhalo end'));
+  o.push(txt(X(MAIN_GATE.pos[0]) - 6, Y(MAIN_GATE.pos[1]) + 11, '主闸门 −80m', 'xs b dhalo end'));
+  o.push(txt(X(gens[2][0]) + 6, Y(gens[2][1]) - 5, '幻域浮标环 (2~3 km)', 'xs dhalo'));
+
+  o.push(`</g>`);
+
+  // 坐标刻度、指北针、比例尺与图例
+  o.push(`<rect x="${FX}" y="${FY}" width="${FW}" height="${FH}" fill="none" stroke="${C.ink}" stroke-width="1.2"/>`);
+  for (let gx = -3; gx <= 3; gx++) {
+    const px = X(gx);
+    if (px > FX + 10 && px < FX + FW - 10) {
+      o.push(`<line x1="${r(px)}" y1="${FY + FH}" x2="${r(px)}" y2="${FY + FH + 5}" stroke="${C.ink}"/>`);
+      o.push(txt(px, FY + FH + 16, `${gx > 0 ? '+' + gx : gx} km`, 'xs mid'));
+    }
+  }
+  for (let gy = -2; gy <= 2; gy++) {
+    const py = Y(gy);
+    if (py > FY + 10 && py < FY + FH - 10) {
+      o.push(`<line x1="${FX - 5}" y1="${r(py)}" x2="${FX}" y2="${r(py)}" stroke="${C.ink}"/>`);
+      o.push(txt(FX - 8, py + 3.5, `${gy > 0 ? '+' + gy : gy} km`, 'xs end'));
+    }
+  }
+  // 指北针
+  o.push(`<g transform="translate(${FX + FW - 34},${FY + 36})">
+    <circle r="16" fill="rgba(255,255,255,.82)" stroke="${C.ink}" stroke-width="1"/>
+    <polygon points="0,-12 -4.5,6 0,2.5 4.5,6" fill="${C.ink}"/>
+    <text y="-19" class="xs b mid">北 N</text>
+  </g>`);
+  // 图例盒
+  o.push(`<g transform="translate(${FX + 12},${FY + FH - 88})">
+    <rect width="268" height="76" rx="5" fill="rgba(255,255,255,.88)" stroke="#9aaab5"/>
+    <rect x="10" y="10" width="12" height="8" fill="${C.amber}" stroke="#222"/><text x="27" y="18" class="xs">崖宅 (+412~+440m) / 岩隙营房</text>
+    <line x1="10" y1="30" x2="22" y2="30" stroke="${C.tunnel}" stroke-width="2" stroke-dasharray="4 2"/><text x="27" y="33" class="xs">电磁弹射隧道 (+90~+100m) 与发射井</text>
+    <line x1="10" y1="45" x2="22" y2="45" stroke="#225577" stroke-width="2" stroke-dasharray="4 2"/><text x="27" y="48" class="xs">潜艇充水航道 (主闸门−80m / 西闸门−60m)</text>
+    <line x1="10" y1="60" x2="22" y2="60" stroke="${C.hull}" stroke-width="1.5" stroke-dasharray="6 3"/><text x="27" y="63" class="xs">远古基核壳体范围 · 外圈黑点为幻域浮标</text>
+  </g>`);
+  // 1 km 比例尺
+  o.push(`<g transform="translate(${FX + FW - 175},${FY + FH - 24})">
+    <rect x="-8" y="-14" width="170" height="24" rx="4" fill="rgba(255,255,255,.85)"/>
+    <rect width="${r(k)}" height="5" fill="${C.ink}"/>
+    <text x="${r(k * 0.5)}" y="-3" class="xs b mid">1 公里 (全岛东西约 3.7 km)</text>
+  </g>`);
+
+  o.push(`</svg>`);
+  return o.join('\n');
+}
+
+// ═════════ 图 2: 南立面图 + 3.1 崖宅竖向轻薄堡垒立面详图 (elevSVG) ═════════
+function elevSVG() {
+  const W = 960, Hh = 770;
+  const o = [];
+  o.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${Hh}">`);
+  o.push(`<defs>
+    <style>${BASE_CSS}</style>
+    <linearGradient id="skyElev" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#dde6ec"/>
+      <stop offset="100%" stop-color="#f2f5f7"/>
+    </linearGradient>
+    <linearGradient id="glassCurtain" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#223544"/>
+      <stop offset="55%" stop-color="#2f495c"/>
+      <stop offset="100%" stop-color="#1b2a36"/>
+    </linearGradient>
+    <linearGradient id="amberGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffcf75" stop-opacity="0.72"/>
+      <stop offset="100%" stop-color="#d8892c" stop-opacity="0.28"/>
+    </linearGradient>
+    <linearGradient id="tiSheath" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c8994"/>
+      <stop offset="35%" stop-color="#aebac4"/>
+      <stop offset="100%" stop-color="#6d7984"/>
+    </linearGradient>
+  </defs>`);
+  o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
+
+  // ── 上半幅: 全岛南立面远眺 (自南面外海向北望, x ∈ [-2.05, 1.95], z ∈ [-110, 500] m) ──
+  const FX1 = 58, FY1 = 52, FW1 = 860, FH1 = 278;
+  const x0 = -2.05, x1 = 1.95; // 4.0 km
+  const kx = FW1 / (x1 - x0);  // 215 px/km -> 0.215 px/m
+  const kz = 0.43;             // 垂直夸大 2.0x, 清晰展现 460m 巨崖与内部海拔关系
+  const X1 = x => FX1 + (x - x0) * kx;
+  const Z1 = z => FY1 + FH1 - (z - (-110)) * kz;
+
+  o.push(txt(FX1, 26, '岛屿基地 · 南立面图与崖宅定稿立面 (3.1 版)', 'title'));
+  o.push(txt(FX1, 43, '上图: 自南侧外海向北远眺 460 米刀刃绝壁、南剑峰与东屿 (垂直比例 2×) · 下图: +412~+440 米四层轻薄竖向崖壁堡垒 1:1 详图', 'sub'));
+
+  o.push(`<rect x="${FX1}" y="${FY1}" width="${FW1}" height="${FH1}" fill="url(#skyElev)" stroke="${C.ink}"/>`);
+
+  // 按由北(远)向南(近)分带投影天际轮廓
+  const bands = [
+    { yMin:  0.10, yMax:  1.70, col: '#9aaab4' }, // 远景: 西岬/东岬/北翼
+    { yMin: -0.65, yMax:  0.10, col: '#778590' }, // 中远景: 西尖塔(365m)/东尖塔(310m)/东屿(280m)
+    { yMin: -1.40, yMax: -0.65, col: '#4a525b' }, // 近景: 南岸主崖岬(460m)/西崖角(340m)/东南崖角(290m)
+  ];
+  const nx = 320;
+  for (const b of bands) {
+    const pts = [[X1(x0), Z1(0)]];
+    for (let i = 0; i <= nx; i++) {
+      const x = x0 + (i / nx) * (x1 - x0);
+      let hz = 0;
+      for (let y = b.yMin; y <= b.yMax; y += 0.015) {
+        if (onLand(x, y)) { const h = H(x, y); if (h > hz) hz = h; }
+      }
+      pts.push([X1(x), Z1(hz)]);
+    }
+    pts.push([X1(x1), Z1(0)]);
+    o.push(`<path d="${pathPts(pts, true)}" fill="${b.col}" stroke="#2d343b" stroke-width="0.8"/>`);
+  }
+
+  // 近景主崖柱状节理竖纹
+  for (let x = -1.78; x <= 1.38; x += 0.045) {
+    let hz = 0;
+    for (let y = -1.32; y <= -0.66; y += 0.02) if (onMainLand(x, y)) hz = Math.max(hz, H(x, y));
+    if (hz > 80) {
+      o.push(`<line x1="${r(X1(x))}" y1="${r(Z1(hz * 0.92))}" x2="${r(X1(x))}" y2="${r(Z1(15))}" stroke="#343b42" stroke-width="0.65" opacity="0.55"/>`);
+    }
+  }
+
+  // 一线天水道裂隙阴影与北口百米海蚀拱门示意
+  o.push(`<rect x="${r(X1(1.40))}" y="${r(Z1(105))}" width="${r((1.52 - 1.40) * kx)}" height="${r(105 * kz)}" fill="#c8d6df" opacity="0.65"/>`);
+  o.push(`<path d="M${r(X1(1.38))},${r(Z1(105))} L${r(X1(1.54))},${r(Z1(105))} L${r(X1(1.54))},${r(Z1(74))} Q${r(X1(1.46))},${r(Z1(92))} ${r(X1(1.38))},${r(Z1(74))} Z" fill="#5e6872" stroke="#2c333a" stroke-width="0.8"/>`);
+
+  // 水面以下深潜崖剖面与洋面
+  o.push(`<rect x="${FX1}" y="${r(Z1(0))}" width="${FW1}" height="${r(FY1 + FH1 - Z1(0))}" fill="#89a8bb" opacity="0.82"/>`);
+  o.push(`<path d="M${r(X1(-1.88))},${r(Z1(0))} L${r(X1(-1.96))},${r(Z1(-110))} L${r(X1(1.86))},${r(Z1(-110))} L${r(X1(1.78))},${r(Z1(0))} Z" fill="#3a4652" opacity="0.72"/>`);
+  o.push(`<line x1="${FX1}" y1="${r(Z1(0))}" x2="${FX1 + FW1}" y2="${r(Z1(0))}" stroke="#1c3b4f" stroke-width="1.4"/>`);
+
+  // 南剑峰 (前景外海 260m 黑色剑峰)
+  {
+    const sx = SWORD_PEAK.x, sw = SWORD_PEAK.r;
+    const sp = [
+      [X1(sx - sw), Z1(0)],
+      [X1(sx - sw * 0.62), Z1(135)],
+      [X1(sx - sw * 0.16), Z1(260)],
+      [X1(sx + sw * 0.12), Z1(248)],
+      [X1(sx + sw * 0.55), Z1(120)],
+      [X1(sx + sw * 0.92), Z1(0)],
+    ];
+    o.push(`<path d="${pathPts(sp, true)}" fill="#1f252c" stroke="#eef5f9" stroke-width="0.9"/>`);
+    o.push(txt(X1(sx) + 12, Z1(245), '南剑峰 260m (外海海蚀孤峰)', 'xs b halo'));
+  }
+
+  // 在 460m 主崖岬上标出真实比例的崖宅 (+412~+440m, 宽34m, 高28m!)
+  {
+    const vx = X1(villaCoast[0]), vw = Math.max(7.5, 0.034 * kx);
+    const vyTop = Z1(440), vyBot = Z1(412);
+    o.push(`<rect x="${r(vx - vw * 0.5)}" y="${r(vyTop)}" width="${r(vw)}" height="${r(vyBot - vyTop)}" fill="${C.amber}" stroke="#141a20" stroke-width="1"/>`);
+    o.push(`<circle cx="${r(vx)}" cy="${r((vyTop + vyBot) * 0.5)}" r="9" fill="none" stroke="#c84b31" stroke-width="1.2" stroke-dasharray="3 2"/>`);
+    o.push(txt(vx - 14, vyTop - 6, '崖宅 (+412~+440m, 下方留有四百米绝壁)', 'xs b halo end'));
+  }
+  // 三个水平弹射口与两个水下闸门位置
+  for (const t of TUNNELS) {
+    const tx = X1(t.exit[0]), ty = Z1(t.z);
+    o.push(`<circle cx="${r(tx)}" cy="${r(ty)}" r="2.8" fill="${C.tunnel}" stroke="#fff" stroke-width="0.8"/>`);
+    o.push(txt(tx + 5, ty + 3, `${t.name} +${t.z}m`, 'xs halo'));
+  }
+  o.push(`<rect x="${r(X1(villaCoast[0]) - 3)}" y="${r(Z1(-80) - 3)}" width="6" height="6" fill="#183f59" stroke="#fff" stroke-width="0.8"/>`);
+  o.push(txt(X1(villaCoast[0]) + 6, Z1(-80) + 3, '主闸门 −80m', 'xs whalo'));
+  o.push(`<rect x="${r(X1(WEST_GATE.pos[0]) - 3)}" y="${r(Z1(-60) - 3)}" width="6" height="6" fill="#183f59" stroke="#fff" stroke-width="0.8"/>`);
+  o.push(txt(X1(WEST_GATE.pos[0]) + 6, Z1(-60) + 3, '西闸门 −60m', 'xs whalo'));
+
+  // 峰顶高程注记与标尺
+  o.push(txt(X1(-0.22), Z1(466), '主崖岬 460m', 's b halo mid'));
+  o.push(txt(X1(-1.45), Z1(348), '西崖角 340m', 'xs b halo mid'));
+  o.push(txt(X1(-1.25), Z1(374), '西尖塔 365m', 'xs halo mid'));
+  o.push(txt(X1(0.68), Z1(318), '东尖塔 310m', 'xs halo mid'));
+  o.push(txt(X1(0.92), Z1(298), '东南崖角 290m', 'xs b halo mid'));
+  o.push(txt(X1(ISLET.x), Z1(288), '东屿 280m', 'xs b halo mid'));
+  o.push(txt(X1(1.46), Z1(118), '一线天与海蚀拱门', 'xs halo mid'));
+  for (const z of [-100, 0, 100, 200, 300, 400, 460]) {
+    o.push(`<line x1="${FX1 - 5}" y1="${r(Z1(z))}" x2="${FX1}" y2="${r(Z1(z))}" stroke="${C.ink}"/>`);
+    o.push(txt(FX1 - 8, Z1(z) + 3.5, `${z > 0 ? '+' + z : z}m`, 'xs end'));
+  }
+
+  // ── 下半幅: 崖宅 3.1 定稿正立面详图 (1:1 等比例, 横向 u ∈ [-46, +46] m, 海拔 z ∈ [400, 460] m) ──
+  const FX2 = 58, FY2 = 368, FW2 = 860, FH2 = 364;
+  // FH2 = 364 px 对应 Δz = 56 m (404 ~ 460 m) => k2 = 6.5 px/m, 横向显示约 132 m (-66 ~ +66 m)
+  const k2 = 6.4, uSpan = FW2 / k2;
+  const U2 = u => FX2 + FW2 * 0.5 + u * k2;
+  const Z2 = z => FY2 + FH2 - (z - 404) * k2;
+
+  o.push(txt(FX2, FY2 - 9, '崖宅正立面 1:1 详图 — 自崖顶肩部垂降的四层轻薄钛金属装甲鞘与双层钢化玻璃幕墙 (+412 ~ +440 m, 宽 34 m × 高 28 m)', 's b'));
+  o.push(`<g>`);
+  o.push(`<clipPath id="villaElevClip"><rect x="${FX2}" y="${FY2}" width="${FW2}" height="${FH2}"/></clipPath>`);
+  o.push(`<g clip-path="url(#villaElevClip)">`);
+  // 背景深色柱状节理玄武岩绝壁 + 顶部 445~460m 刀刃山脊天际线
+  o.push(`<rect x="${FX2}" y="${FY2}" width="${FW2}" height="${FH2}" fill="#dce5ec"/>`);
+  const crestPts = [[FX2, FY2 + FH2]];
+  for (let u = -uSpan * 0.52; u <= uSpan * 0.52; u += 2) {
+    const cz = 458.5 - 0.08 * Math.abs(u) - 2.6 * Math.pow((u / 48), 2) + 1.4 * vnoise(u * 0.14, 2.3, 88);
+    crestPts.push([U2(u), Z2(cz)]);
+  }
+  crestPts.push([FX2 + FW2, FY2 + FH2]);
+  o.push(`<path d="${pathPts(crestPts, true)}" fill="#444950" stroke="#23272c" stroke-width="1.2"/>`);
+
+  // 玄武岩垂直柱状节理裂隙纹理 (凸显下方 404~412m 为纯粹原始绝壁, 不通山底!)
+  const rng = mulberry32(412440);
+  for (let u = -64; u <= 64; u += 2.6) {
+    const ux = U2(u + (rng() - 0.5) * 0.7);
+    const topZ = 455 - 0.09 * Math.abs(u);
+    o.push(`<line x1="${r(ux)}" y1="${r(Z2(topZ))}" x2="${r(ux)}" y2="${r(FY2 + FH2)}" stroke="#2e3238" stroke-width="${rng() > 0.6 ? 1.1 : 0.6}" opacity="0.68"/>`);
+    for (let hz = 408; hz < topZ; hz += 7 + rng() * 6) {
+      o.push(`<line x1="${r(ux - 5)}" y1="${r(Z2(hz))}" x2="${r(ux + 5)}" y2="${r(Z2(hz + (rng() - 0.5) * 1.4))}" stroke="#2b2f35" stroke-width="0.55" opacity="0.48"/>`);
+    }
+  }
+
+  // 岩槽阴影凹口 (u ∈ [-17.8, +17.8], z ∈ [411.6, 440.4])
+  o.push(`<rect x="${r(U2(-17.8))}" y="${r(Z2(440.4))}" width="${r(35.6 * k2)}" height="${r(28.8 * k2)}" rx="3" fill="#181c21"/>`);
+
+  // 外圈轻薄冷灰钛金属装甲外鞘 (u ∈ [-17, +17], z ∈ [412, 440], 两侧薄鞘宽仅 1.6m)
+  // 1) 底部轻薄折角收束腹板 (+412.0 ~ +413.2m, 干净锚入绝壁)
+  const belly = [
+    [U2(-17.0), Z2(413.4)], [U2(17.0), Z2(413.4)],
+    [U2(14.2),  Z2(412.0)], [U2(-14.2), Z2(412.0)],
+  ];
+  o.push(`<path d="${pathPts(belly, true)}" fill="url(#tiSheath)" stroke="#1e252b" stroke-width="1.1"/>`);
+
+  // 2) 底部重工实验舱内凹舱口 (z: 413.2 ~ 422.6m, u: -15.4 ~ +15.4)
+  o.push(`<rect x="${r(U2(-15.4))}" y="${r(Z2(422.6))}" width="${r(30.8 * k2)}" height="${r(9.4 * k2)}" fill="#161e26" stroke="#2b3742" stroke-width="1"/>`);
+  // 舱内桥式吊车梁、远古蓝金能量核心与停泊轻型座机剪影
+  o.push(`<rect x="${r(U2(-14.5))}" y="${r(Z2(421.6))}" width="${r(29.0 * k2)}" height="${r(0.9 * k2)}" fill="#4b5864"/>`);
+  o.push(`<circle cx="${r(U2(8.5))}" cy="${r(Z2(416.8))}" r="${r(2.1 * k2)}" fill="#5ec2d6" opacity="0.78"/>`);
+  o.push(`<circle cx="${r(U2(8.5))}" cy="${r(Z2(416.8))}" r="${r(1.0 * k2)}" fill="#e9fbff"/>`);
+  // 停靠座机正视剪影
+  o.push(`<polygon points="${r(U2(-8.5))},${r(Z2(414.3))} ${r(U2(-2.0))},${r(Z2(415.7))} ${r(U2(4.5))},${r(Z2(414.3))} ${r(U2(1.8))},${r(Z2(413.6))} ${r(U2(-5.8))},${r(Z2(413.6))}" fill="#8b99a6" stroke="#1c242b" stroke-width="0.9"/>`);
+
+  // 3) 纤薄悬挑起降甲板 (+413.0m, 向前平直探出, 正立面呈极利落的冷灰金属薄刃与警示灯带)
+  o.push(`<rect x="${r(U2(-13.8))}" y="${r(Z2(413.5))}" width="${r(27.6 * k2)}" height="${r(0.85 * k2)}" rx="1.5" fill="#c3cfd8" stroke="#182028" stroke-width="1.1"/>`);
+  for (let u = -12; u <= 12; u += 4) {
+    o.push(`<rect x="${r(U2(u - 0.35))}" y="${r(Z2(413.25))}" width="${r(0.7 * k2)}" height="${r(0.32 * k2)}" fill="${C.amber}"/>`);
+  }
+
+  // 4) 中央两层大面积防弹钢化玻璃幕墙主厅 (z: 423.0 ~ 435.0m, 每层 6m, 429m 处纤薄楼层腰带)
+  o.push(`<rect x="${r(U2(-15.4))}" y="${r(Z2(435.0))}" width="${r(30.8 * k2)}" height="${r(12.0 * k2)}" fill="url(#glassCurtain)" stroke="#1b2630" stroke-width="1.1"/>`);
+  // 室内克制沉静的琥珀色暖光透射与层板剪影
+  o.push(`<rect x="${r(U2(-14.6))}" y="${r(Z2(434.2))}" width="${r(29.2 * k2)}" height="${r(4.8 * k2)}" fill="url(#amberGlow)" opacity="0.62"/>`);
+  o.push(`<rect x="${r(U2(-14.6))}" y="${r(Z2(428.3))}" width="${r(29.2 * k2)}" height="${r(4.9 * k2)}" fill="url(#amberGlow)" opacity="0.72"/>`);
+  // 429m 纤薄冷灰钛金属层间横梁与 423m 主厅底梁
+  o.push(`<rect x="${r(U2(-15.6))}" y="${r(Z2(429.35))}" width="${r(31.2 * k2)}" height="${r(0.7 * k2)}" fill="url(#tiSheath)" stroke="#1d252c" stroke-width="0.9"/>`);
+  o.push(`<rect x="${r(U2(-16.8))}" y="${r(Z2(423.25))}" width="${r(33.6 * k2)}" height="${r(0.85 * k2)}" fill="url(#tiSheath)" stroke="#1d252c" stroke-width="1"/>`);
+  // 纤细竖向钛钢肋框 (mullions, 5 等分跨度)
+  for (const u of [-9.2, -3.1, 3.1, 9.2]) {
+    o.push(`<line x1="${r(U2(u))}" y1="${r(Z2(435.0))}" x2="${r(U2(u))}" y2="${r(Z2(423.25))}" stroke="#9aa8b4" stroke-width="1.5"/>`);
+  }
+  // 玻璃斜向高光反射条
+  o.push(`<polygon points="${r(U2(-13))},${r(Z2(434.8))} ${r(U2(-9.5))},${r(Z2(434.8))} ${r(U2(-13.5))},${r(Z2(423.5))} ${r(U2(-15))},${r(Z2(423.5))}" fill="#ffffff" opacity="0.09"/>`);
+  o.push(`<polygon points="${r(U2(4))},${r(Z2(434.8))} ${r(U2(7))},${r(Z2(434.8))} ${r(U2(2.5))},${r(Z2(423.5))} ${r(U2(0.5))},${r(Z2(423.5))}" fill="#ffffff" opacity="0.07"/>`);
+
+  // 5) 左右两侧轻薄冷灰钛金属侧鞘 (厚仅 1.6m, 如刀鞘般利落包裹嵌入岩槽)
+  o.push(`<rect x="${r(U2(-17.0))}" y="${r(Z2(439.6))}" width="${r(1.65 * k2)}" height="${r(26.3 * k2)}" rx="2" fill="url(#tiSheath)" stroke="#1d252c" stroke-width="1.1"/>`);
+  o.push(`<rect x="${r(U2(15.35))}" y="${r(Z2(439.6))}" width="${r(1.65 * k2)}" height="${r(26.3 * k2)}" rx="2" fill="url(#tiSheath)" stroke="#1d252c" stroke-width="1.1"/>`);
+
+  // 6) 顶部装甲冠层 (1层, 435 ~ 440m): 顶缘平切嵌入崖顶肩部 + 狭长观测窗缝
+  const crown = [
+    [U2(-17.0), Z2(439.6)], [U2(-15.5), Z2(440.0)],
+    [U2(15.5),  Z2(440.0)], [U2(17.0),  Z2(439.6)],
+    [U2(17.0),  Z2(435.0)], [U2(-17.0), Z2(435.0)],
+  ];
+  o.push(`<path d="${pathPts(crown, true)}" fill="url(#tiSheath)" stroke="#1b232a" stroke-width="1.2"/>`);
+  // 狭长水平装甲观测窗缝 (z: 436.9 ~ 438.0m)
+  o.push(`<rect x="${r(U2(-12.8))}" y="${r(Z2(438.0))}" width="${r(25.6 * k2)}" height="${r(1.05 * k2)}" rx="1.5" fill="#17242e" stroke="#475663" stroke-width="0.9"/>`);
+  o.push(`<line x1="${r(U2(-12.2))}" y1="${r(Z2(437.45))}" x2="${r(U2(12.2))}" y2="${r(Z2(437.45))}" stroke="${C.amber}" stroke-width="1.4" opacity="0.85"/>`);
+
+  // 比例小人 (1.8m 高, 站立于 +413.5m 起降甲板上)
+  const hx = U2(-11.2), hy = Z2(413.5);
+  o.push(`<circle cx="${r(hx)}" cy="${r(hy - 1.62 * k2)}" r="${r(0.22 * k2)}" fill="#fff"/>`);
+  o.push(`<line x1="${r(hx)}" y1="${r(hy - 1.38 * k2)}" x2="${r(hx)}" y2="${r(hy)}" stroke="#fff" stroke-width="1.6"/>`);
+
+  // 四层结构引线标注
+  const lead2 = (u0, z0, u1, z1, s, subS = '') => {
+    const end = u1 < 0 ? 'end' : '';
+    const dx = u1 < 0 ? -5 : 5;
+    o.push(`<path d="M${r(U2(u0))},${r(Z2(z0))} L${r(U2(u1))},${r(Z2(z1))}" fill="none" stroke="#dce6ee" stroke-width="1"/>`);
+    o.push(txt(U2(u1) + dx, Z2(z1) + 3, s, `s b whalo ${end}`));
+    if (subS) o.push(txt(U2(u1) + dx, Z2(z1) + 17, subS, `xs whalo ${end}`));
+  };
+  lead2(16.5, 437.6, 25, 441.5, '① 顶部装甲冠层 (435–440 m)', '平切嵌岩顶盖 · 狭长观测窗缝 · 后通火山口盆地');
+  lead2(16.0, 432.0, 25, 432.5, '② 双层钢化玻璃幕墙主厅 (423–435 m)', '每层挑高 6 m · 细钛肋框 · 起居/书房/战术观海厅');
+  lead2(15.4, 418.0, 25, 421.5, '③ 底部重工实验舱 (412–423 m)', '内凹纵深 60 m · 桥式吊车梁 · 远古能量核心');
+  lead2(13.6, 413.3, 25, 412.2, '④ 纤薄悬挑起降甲板 (+413 m)', '底缘折角腹板于 +412 m 干净锚入绝壁');
+
+  lead2(-17.0, 431.0, -25, 435.5, '轻薄冷灰钛金属侧鞘 (宽 34 m)', '剔除笨重厚墙, 如刀鞘般利落嵌于柱状玄武岩槽');
+  lead2(-11.2, 414.4, -25, 418.5, '1.8 m 人物比例参照', '下方 −40~+411 m 四百米绝壁保持纯粹原始风貌');
+
+  o.push(`</g>`);
+  o.push(`<rect x="${FX2}" y="${FY2}" width="${FW2}" height="${FH2}" fill="none" stroke="${C.ink}" stroke-width="1.2"/>`);
+  for (const z of [405, 412, 423, 429, 435, 440, 450, 460]) {
+    if (z < 404 || z > 460) continue;
+    o.push(`<line x1="${FX2 - 5}" y1="${r(Z2(z))}" x2="${FX2}" y2="${r(Z2(z))}" stroke="${C.ink}"/>`);
+    o.push(txt(FX2 - 8, Z2(z) + 3.5, `+${z}m`, 'xs end'));
+  }
+  // 10m 1:1 比例尺
+  o.push(`<g transform="translate(${FX2 + 14},${FY2 + FH2 - 22})">
+    <rect x="-6" y="-12" width="176" height="20" rx="3" fill="rgba(20,28,36,.78)"/>
+    <rect width="${r(10 * k2)}" height="4" fill="#fff"/>
+    <text x="${r(10 * k2 + 8)}" y="4" class="xs" fill="#eef4f8">10 米 (水平与垂直 1:1 同比例)</text>
+  </g>`);
+  o.push(`</g>`);
+
+  o.push(`</svg>`);
+  return o.join('\n');
+}
+
+// ═════════ 图 3: 南北剖面图 B–B′ (sectionSVG, x = -0.25) ═════════
+export const SECTION_X = -0.25;
+function sectionSVG() {
+  const W = 960, Hh = 680, FX = 64, FY = 58, FW = 852, FH = 576;
+  // y ∈ [-1.62, 0.86] km (2480 m), z ∈ [-720, 520] m (1240 m) -> 垂直夸大 1.3x 兼顾真实陡峭感与洞室清晰度
+  const yMin = -1.62, yMax = 0.86;
+  const zMin = -720, zMax = 520;
+  const ky = FW / ((yMax - yMin) * 1000); // px / m
+  const kz = FH / (zMax - zMin);          // px / m (~1.33x)
+  const Ys = yKm => FX + (yKm - yMin) * 1000 * ky;
+  const Zs = zM => FY + FH - (zM - zMin) * kz;
+
+  // 查找剖面线与南北岸线及镜湖交点
+  let Y0 = -1.24, Y1 = 0.44, l0 = -0.17, l1 = 0.12, crestZ = 456;
+  const landYs = [];
+  for (let y = -1.55; y <= 0.80; y += 0.002) if (onMainLand(SECTION_X, y)) landYs.push(y);
+  if (landYs.length) { Y0 = landYs[0]; Y1 = landYs[landYs.length - 1]; }
+  const lakeYs = [];
+  for (let y = -0.35; y <= 0.30; y += 0.002) if (pip(lakePts, SECTION_X, y)) lakeYs.push(y);
+  if (lakeYs.length) { l0 = lakeYs[0]; l1 = lakeYs[lakeYs.length - 1]; }
+
+  // 构造地表与海底剖面折线
+  const prof = [];
+  for (let y = yMin; y <= yMax; y += 0.006) {
+    let z;
+    if (y < Y0) {
+      const d = (Y0 - y) * 1000;
+      z = lerpLine(APRON, -d);
+    } else if (y > Y1) {
+      const d = (y - Y1) * 1000;
+      z = -Math.min(180, 2 + d * 0.24);
+    } else if (pip(lakePts, SECTION_X, y)) {
+      const u = Math.sin(clamp((y - l0) / (l1 - l0 + 1e-6)) * Math.PI);
+      z = lakeLevel - LAKE.depth * Math.pow(u, 0.75);
+    } else {
+      const dSouth = (y - Y0) * 1000;
+      const hInland = H(SECTION_X, y);
+      if (dSouth < 124) z = lerpLine(CLIFF, dSouth) * (H(SECTION_X, Y0 + 0.124) / 460);
+      else z = hInland;
+      if (z > crestZ) crestZ = z;
+    }
+    prof.push([Ys(y), Zs(z)]);
+  }
+  const rockPoly = [[Ys(yMin), Zs(zMin)], ...prof, [Ys(yMax), Zs(zMin)]];
+
+  const o = [];
+  o.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${Hh}">`);
+  o.push(`<defs>
+    <style>${BASE_CSS}</style>
+    <clipPath id="secClip"><rect x="${FX}" y="${FY}" width="${FW}" height="${FH}"/></clipPath>
+    <linearGradient id="rockGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#686d73"/>
+      <stop offset="35%" stop-color="#53585f"/>
+      <stop offset="100%" stop-color="#3b4047"/>
+    </linearGradient>
+  </defs>`);
+  o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
+  o.push(txt(FX, 26, '岛屿基地 · 南北纵剖面图 B–B′ (3.1 版, 沿 x = −0.25 km)', 'title'));
+  o.push(txt(FX, 43, '460 米刀刃主崖与深潜崖 · 破火山口碗底(风草甸 165m / 镜湖 138m) · 远古基核壳体 (−670m) 与三层八舱段地下城', 'sub'));
+
+  o.push(`<g clip-path="url(#secClip)">`);
+  // 天空与南北两侧海水
+  o.push(`<rect x="${FX}" y="${FY}" width="${FW}" height="${FH}" fill="#e6eef3"/>`);
+  o.push(`<rect x="${FX}" y="${r(Zs(0))}" width="${r(Ys(Y0 + 0.05) - FX)}" height="${r(Zs(zMin) - Zs(0))}" fill="#7ea0b5"/>`);
+  o.push(`<rect x="${r(Ys(Y1 - 0.02))}" y="${r(Zs(0))}" width="${r(FX + FW - Ys(Y1 - 0.02))}" height="${r(Zs(zMin) - Zs(0))}" fill="#8eb0c2"/>`);
+
+  // 镜湖水体填充 (138m)
+  if (lakeYs.length) {
+    o.push(`<rect x="${r(Ys(l0))}" y="${r(Zs(lakeLevel))}" width="${r(Ys(l1) - Ys(l0))}" height="${r(Zs(lakeLevel - LAKE.depth) - Zs(lakeLevel))}" fill="${C.lake}"/>`);
+  }
+
+  // 岛体玄武岩基岩填充
+  o.push(`<path d="${pathPts(rockPoly, true)}" fill="url(#rockGrad)" stroke="#23282e" stroke-width="1.4"/>`);
+
+  // 远古基核未知材料整体壳体轮廓 (主崖后方延伸至海平面以下 -670m)
+  const hullPts = [
+    [Y0 + 0.08, 435], [Y0 + 0.14, 448], [-0.42, 220], [-0.15, 95], [-0.08, -190],
+    [-0.14, -560], [-0.45, -670], [-0.92, -670], [-1.14, -520], [-1.18, -120], [-1.17, 290],
+  ].map(([yk, zm]) => [Ys(yk), Zs(zm)]);
+  o.push(`<path d="${pathPts(hullPts, true)}" fill="#46515c" fill-opacity="0.45" stroke="#9ec4d8" stroke-width="1.8" stroke-dasharray="9 4"/>`);
+
+  // 中央主竖井 (连通崖宅 → 机库洞厅 → 内港 → 工坊 → 地下城)
+  const shaftY = -0.76;
+  o.push(`<rect x="${r(Ys(shaftY) - 3)}" y="${r(Zs(422))}" width="6" height="${r(Zs(-525) - Zs(422))}" fill="#cfc8bc" stroke="#22282e" stroke-width="0.9"/>`);
+  // 崖宅斜向联络竖井 (从 y=-1.14, +415m 通向机库北端)
+  o.push(`<path d="M${r(Ys(Y0 + 0.13))},${r(Zs(414))} L${r(Ys(-0.88))},${r(Zs(110))} L${r(Ys(-0.88))},${r(Zs(10))} " fill="none" stroke="#cfc8bc" stroke-width="3.2"/>`);
+
+  // 1) 崖宅 (+412 ~ +440m, 嵌于主崖顶部南缘, 并带后山通道直通北坡俯瞰盆地)
+  const vy = Y0 + 0.098;
+  o.push(`<rect x="${r(Ys(vy - 0.015))}" y="${r(Zs(440))}" width="${r(0.075 * 1000 * ky)}" height="${r(28 * kz)}" fill="${C.amber}" stroke="#141a20" stroke-width="1.1"/>`);
+  // 后山通道 (+436m 穿通狭窄刀刃山脊至火山口内壁)
+  o.push(`<line x1="${r(Ys(vy + 0.05))}" y1="${r(Zs(436))}" x2="${r(Ys(Y0 + 0.20))}" y2="${r(Zs(428))}" stroke="#f5d28c" stroke-width="2.2"/>`);
+
+  // 2) 机库洞厅 (+70 ~ +115m, 主崖后方 420~760m => y ∈ [-0.82, -0.48], 正在风草甸下方)
+  const hy0 = Y0 + 0.42, hy1 = Y0 + 0.76;
+  o.push(`<path d="M${r(Ys(hy0))},${r(Zs(70))} V${r(Zs(98))} Q${r(Ys((hy0 + hy1) * 0.5))},${r(Zs(124))} ${r(Ys(hy1))},${r(Zs(98))} V${r(Zs(70))} Z" fill="${C.chamber}" stroke="#1c2228" stroke-width="1.2"/>`);
+  // 三座垂直发射井直通风草甸草皮 (~165m)
+  for (const sy of [hy0 + 0.08, (hy0 + hy1) * 0.5, hy1 - 0.08]) {
+    o.push(`<rect x="${r(Ys(sy) - 2.4)}" y="${r(Zs(165))}" width="4.8" height="${r(Zs(106) - Zs(165))}" fill="#e8c39e" stroke="${C.tunnel}" stroke-width="0.9"/>`);
+  }
+  // 南水平电磁弹射隧道 (+95m, 直冲主崖中层绝壁)
+  o.push(`<line x1="${r(Ys(Y0 + 0.032))}" y1="${r(Zs(95))}" x2="${r(Ys(hy0))}" y2="${r(Zs(90))}" stroke="#f0b199" stroke-width="3.6"/>`);
+  o.push(`<line x1="${r(Ys(Y0 + 0.032))}" y1="${r(Zs(95))}" x2="${r(Ys(hy0))}" y2="${r(Zs(90))}" stroke="${C.tunnel}" stroke-width="1.4" stroke-dasharray="4 2"/>`);
+
+  // 3) 潜艇内港 (−95 ~ +25m, 主崖后方 280~680m => y ∈ [-0.96, -0.56], 港内水面 0m, 经 350m 水下隧道通 -80m 主闸门)
+  const py0 = Y0 + 0.28, py1 = Y0 + 0.68;
+  o.push(`<path d="M${r(Ys(py0))},${r(Zs(-95))} V${r(Zs(10))} Q${r(Ys((py0 + py1) * 0.5))},${r(Zs(32))} ${r(Ys(py1))},${r(Zs(10))} V${r(Zs(-95))} Z" fill="${C.chamber}" stroke="#1c2228" stroke-width="1.2"/>`);
+  o.push(`<rect x="${r(Ys(py0) + 1)}" y="${r(Zs(0))}" width="${r(Ys(py1) - Ys(py0) - 2)}" height="${r(Zs(-95) - Zs(0))}" fill="#6c95ad"/>`);
+  // -80m 主闸门充水航道 (~350m)
+  o.push(`<path d="M${r(Ys(Y0 - 0.045))},${r(Zs(-80))} L${r(Ys(py0))},${r(Zs(-72))}" stroke="#6c95ad" stroke-width="5.5"/>`);
+
+  // 4) 工坊 (−240 ~ −125m, 两处洞室: 机器人工厂 / 海水淡化与合成食物)
+  for (const [wy0, wy1] of [[-0.92, -0.68], [-0.58, -0.34]]) {
+    o.push(`<rect x="${r(Ys(wy0))}" y="${r(Zs(-125))}" width="${r(Ys(wy1) - Ys(wy0))}" height="${r(Zs(-240) - Zs(-125))}" rx="5" fill="${C.chamber}" stroke="#1c2228" stroke-width="1.1"/>`);
+  }
+
+  // 5) 核聚变反应堆 (~ −320m) 与 超级人工智能中枢 (~ −330m)
+  o.push(`<circle cx="${r(Ys(-0.72))}" cy="${r(Zs(-320))}" r="${r(36 * kz)}" fill="#ffd27d" stroke="#1c2228" stroke-width="1.2"/>`);
+  o.push(`<rect x="${r(Ys(-0.50))}" y="${r(Zs(-302))}" width="${r(0.18 * 1000 * ky)}" height="${r(56 * kz)}" rx="4" fill="#b8d9e8" stroke="#1c2228" stroke-width="1.1"/>`);
+  // 深海热沉排热导管 (排入南侧水下深潜崖冷水)
+  o.push(`<path d="M${r(Ys(-0.72))},${r(Zs(-345))} L${r(Ys(Y0 - 0.28))},${r(Zs(-365))}" fill="none" stroke="#8fb8cc" stroke-width="1.6" stroke-dasharray="4 3"/>`);
+
+  // 6) 地下城 (−535 ~ −440m, 精简为 8 个舱段, 分 3 层错落排列, 总长约 450m × 高 95m, 供 100 人长期自持)
+  const dcY0 = -0.88; // 范围 -0.88 ~ -0.43 (450m)
+  const pods = [
+    // 上层 (-462 ~ -442m, 3舱段)
+    [-0.86, -0.74, -442, -462], [-0.70, -0.57, -442, -462], [-0.54, -0.43, -442, -462],
+    // 中层 (-498 ~ -476m, 3舱段)
+    [-0.88, -0.75, -476, -498], [-0.72, -0.58, -476, -498], [-0.55, -0.44, -476, -498],
+    // 下层 (-535 ~ -512m, 2舱段)
+    [-0.84, -0.68, -512, -535], [-0.64, -0.48, -512, -535],
+  ];
+  // 联络走廊网
+  o.push(`<rect x="${r(Ys(dcY0))}" y="${r(Zs(-440))}" width="${r(450 * ky)}" height="${r(95 * kz)}" rx="6" fill="none" stroke="#aab6c0" stroke-width="0.9" stroke-dasharray="3 3"/>`);
+  for (const [a, b, zt, zb] of pods) {
+    o.push(`<rect x="${r(Ys(a))}" y="${r(Zs(zt))}" width="${r(Ys(b) - Ys(a))}" height="${r(Zs(zb) - Zs(zt))}" rx="3" fill="${C.chamber}" stroke="#1a2026" stroke-width="1"/>`);
+  }
+  // 深海脱出口 (−500m 充水航道约 400m 直通南侧深潜崖坡)
+  o.push(`<path d="M${r(Ys(-0.88))},${r(Zs(-500))} L${r(Ys(Y0 - 0.21))},${r(Zs(-505))}" stroke="#6c95ad" stroke-width="3.4" stroke-dasharray="5 2"/>`);
+
+  // 帘瀑北缘崩塌悬崖飞瀑示意 (x=0.10 投影提示)
+  o.push(`<path d="M${r(Ys(0.12))},${r(Zs(138))} L${r(Ys(0.22))},${r(Zs(132))} L${r(Ys(0.25))},${r(Zs(38))} L${r(Ys(0.42))},${r(Zs(2))}" fill="none" stroke="#8ad0e6" stroke-width="1.8" stroke-dasharray="4 3"/>`);
+
+  // 剖面文字注记
+  o.push(txt(Ys(Y0 + 0.12), Zs(472), '主崖岬刀刃山脊 460m', 's b halo mid'));
+  o.push(txt(Ys(vy - 0.04), Zs(428), '崖宅 +412~+440m', 'xs b halo end'));
+  o.push(txt(Ys(-0.68), Zs(182), `风草甸 ~${meadowLevel}m (三座垂直发射井盖)`, 'xs b halo mid'));
+  o.push(txt(Ys((l0 + l1) * 0.5), Zs(154), `镜湖 (水面 ${lakeLevel}m, 深 24m)`, 'xs b halo mid'));
+  o.push(txt(Ys(0.35), Zs(108), '北缘缺口与帘瀑投影 (~90m 落差)', 'xs halo'));
+  o.push(txt(Ys(0.56), Zs(22), '黑砾湾峡湾', 'xs b halo mid'));
+
+  o.push(txt(Ys((hy0 + hy1) * 0.5), Zs(88), '机库洞厅 (+70~+115m)', 'xs b mid'));
+  o.push(txt(Ys(Y0 - 0.02), Zs(102), '南发射口 +95m', 'xs b halo end'));
+  o.push(txt(Ys((py0 + py1) * 0.5), Zs(-42), '潜艇内港 (−95~+25m)', 'xs b whalo mid'));
+  o.push(txt(Ys(Y0 - 0.06), Zs(-76), '主闸门 −80m', 'xs b whalo end'));
+  o.push(txt(Ys(-0.80), Zs(-180), '工坊 A', 'xs b mid'));
+  o.push(txt(Ys(-0.46), Zs(-180), '工坊 B (−240~−125m)', 'xs b mid'));
+  o.push(txt(Ys(-0.72), Zs(-317), '聚变堆 −320m', 'xs b mid'));
+  o.push(txt(Ys(-0.41), Zs(-326), '中枢 AI −330m', 'xs b mid'));
+  o.push(txt(Ys(-0.39), Zs(-482), '地下城 (−535~−440m · 3层8舱段 · 100人末日自持)', 'xs b whalo'));
+  o.push(txt(Ys(Y0 - 0.23), Zs(-502), '深海脱出口 −500m', 'xs b whalo end'));
+  o.push(txt(Ys(-0.45), Zs(-648), '远古基核整体防护壳体 (延伸至 −670m)', 'xs b whalo'));
+  o.push(txt(FX + 12, Zs(-260), '南太平洋深潜崖 (无大陆架)', 'xs whalo'));
+
+  o.push(`</g>`);
+
+  // 边框、海拔轴与比例尺
+  o.push(`<rect x="${FX}" y="${FY}" width="${FW}" height="${FH}" fill="none" stroke="${C.ink}" stroke-width="1.2"/>`);
+  o.push(txt(FX + 10, FY + 18, '南 B (外海大洋)', 't b halo'));
+  o.push(txt(FX + FW - 10, FY + 18, '北 B′ (黑砾湾)', 't b halo end'));
+  for (let z = -700; z <= 500; z += 100) {
+    o.push(`<line x1="${FX - 5}" y1="${r(Zs(z))}" x2="${FX}" y2="${r(Zs(z))}" stroke="${C.ink}"/>`);
+    o.push(txt(FX - 8, Zs(z) + 3.5, `${z > 0 ? '+' + z : z}m`, 'xs end'));
+  }
+  for (let yk = -1.5; yk <= 0.5; yk += 0.5) {
+    o.push(`<line x1="${r(Ys(yk))}" y1="${FY + FH}" x2="${r(Ys(yk))}" y2="${FY + FH + 5}" stroke="${C.ink}"/>`);
+    o.push(txt(Ys(yk), FY + FH + 16, `y = ${yk > 0 ? '+' + yk : yk} km`, 'xs mid'));
+  }
+  o.push(`<g transform="translate(${FX + FW - 185},${FY + FH - 22})">
+    <rect x="-8" y="-13" width="182" height="22" rx="4" fill="rgba(255,255,255,.86)"/>
+    <rect width="${r(250 * ky)}" height="5" fill="${C.ink}"/>
+    <text x="${r(250 * ky + 7)}" y="5" class="xs">水平 250 米</text>
+  </g>`);
+  o.push(`</svg>`);
+
   return { svg: o.join('\n'), Y0, Y1, l0, l1, crestZ };
 }
 
-// ═════════ 图四:主崖与崖宅剖面(真实比例) ═════════
+// ═════════ 图 4: 主崖与崖宅 1:1 真实比例剖面图 (cliffSVG) ═════════
 function cliffSVG() {
-  const W = 960, Ht = 800, o = [svgOpen(W, Ht)];
-  const k = 2, FX4 = 64, FY4 = 66, sMin = -150, sMax = 272, zMax = 236, zMin = -110;
-  const X = s => FX4 + (s - sMin) * k, Z = z => FY4 + (zMax - z) * k, q = (s, z) => `${r(X(s))},${r(Z(z))}`;
-  const FW4 = (sMax - sMin) * k, FH4 = (zMax - zMin) * k;
-  const prof = [[-150, -160], [-128, -130], ...APRON.slice(5).map(p => [p[0], p[1]]), ...CLIFF.slice(1), [215, 203], [272, 195]];
-  const surf = s => lerpLine(prof, s);
-  o.push(`<defs>${GRADS}
-    <linearGradient id="sea4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8cc4e6"/><stop offset="1" stop-color="#1d4f7c"/></linearGradient>
-    <linearGradient id="rock4" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6f6053"/><stop offset=".45" stop-color="#9a8974"/><stop offset="1" stop-color="#b3a58e"/></linearGradient>
-    <clipPath id="f4"><rect x="${FX4}" y="${FY4}" width="${FW4}" height="${FH4}"/></clipPath>
-    <clipPath id="rk4"><path d="M${prof.map(p => q(...p)).join('L')}L${q(sMax, zMin - 60)}L${q(sMin, zMin - 60)}Z"/></clipPath>
-    <marker id="ar4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="${C.ink}"/></marker>
+  const W = 960, Hh = 780, FX4 = 68, FY4 = 56, FW4 = 844, FH4 = 684;
+  // 水平与垂直严格 1:1 同比例!
+  // z ∈ [-115, +485] m (Δz = 600 m) => k = 684 / 600 = 1.14 px/m
+  // s ∈ [-230, +510] m (Δs = 740 m, s=0 为南岸海面崖脚, 向北岛内为正)
+  const zMin = -115, zMax = 485, sMin = -230;
+  const k = FH4 / (zMax - zMin); // 1.14 px/m
+  const Xs = s => FX4 + (s - sMin) * k;
+  const Zs = z => FY4 + FH4 - (z - zMin) * k;
+  const Q = (s, z) => `${r(Xs(s))},${r(Zs(z))}`;
+
+  // 主崖 1:1 完整轮廓: 水下深潜崖 (-230~0m) → 三段式海蚀巨崖 (0~124m, +460m) → 刀刃山脊北坡急跌至火山口内壁与风草甸 (~165m)
+  const northSlope = [
+    [132, 456], [148, 434], [172, 392], [208, 332], [255, 268], [315, 212], [385, 176], [450, 166], [520, 165],
+  ];
+  const fullProf = [
+    [-230, -295], [-160, -225], [-120, -180], [-65, -108], [-45, -82], [-18, -40],
+    ...CLIFF,
+    ...northSlope,
+  ];
+  const rockPts = [[Xs(sMin), Zs(zMin)], ...fullProf.map(([s, z]) => [Xs(s), Zs(Math.max(zMin - 20, z))]), [Xs(520), Zs(zMin)]];
+
+  const o = [];
+  o.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${Hh}">`);
+  o.push(`<defs>
+    <style>${BASE_CSS}</style>
+    <clipPath id="cliffClip"><rect x="${FX4}" y="${FY4}" width="${FW4}" height="${FH4}"/></clipPath>
+    <linearGradient id="basaltSec" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5d6269"/>
+      <stop offset="55%" stop-color="#474c53"/>
+      <stop offset="100%" stop-color="#363a40"/>
+    </linearGradient>
   </defs>`);
-  o.push(`<rect width="${W}" height="${Ht}" fill="#fff"/>`);
-  o.push(txt(14, 30, '图四 主崖与崖宅剖面(真实比例)', 'title') + txt(14, 49, '沿主崖岬自南向北切开,自东向西看 · 不放大,坡度即真实坡度', 'sub'));
-  o.push(`<g clip-path="url(#f4)"><rect x="${FX4}" y="${FY4}" width="${FW4}" height="${r(Z(0) - FY4)}" fill="url(#sky)"/><rect x="${FX4}" y="${r(Z(0))}" width="${FW4}" height="${r(FH4 - (Z(0) - FY4))}" fill="url(#sea4)"/>`);
-  // 岩体
-  o.push(`<path d="M${prof.map(p => q(...p)).join('L')}L${q(sMax, zMin - 60)}L${q(sMin, zMin - 60)}Z" fill="url(#rock4)"/>`);
-  o.push(`<g clip-path="url(#rk4)">`);
-  // 熔岩流层理:与缓台对齐的水平层
-  for (const z of [-60, -20, 20, 52, 93, 125, 150, 176, 192]) o.push(`<path d="M${range(sMin, sMax, 12).map(s => q(s, z + 2 * Math.sin(s * 0.03 + z))).join('L')}" fill="none" stroke="#3a2f27" stroke-opacity=".28" stroke-width="1"/>`);
-  for (const [za, zb] of [[52, 46], [93, 87], [125, 119]]) o.push(`<path d="M${q(sMin, za)}H${r(X(sMax))}V${r(Z(zb))}H${r(X(sMin))}Z" fill="#5e5146" opacity=".28"/>`);
-  // 柱状节理:陡坎和上部绝壁内侧的竖向裂隙
-  for (let i = 0; i < 260; i++) {
-    const z = -20 + hash(i, 21) * 222, s0 = (() => { let lo = 0, hi = 170; for (let t = 0; t < 14; t++) { const m = (lo + hi) / 2; if (surf(m) < z) lo = m; else hi = m; } return hi; })();
-    const s = s0 + 1.5 + hash(i, 22) * (z > 125 ? 46 : 20), len = 6 + hash(i, 23) * (z > 125 ? 22 : 12);
-    o.push(`<line x1="${r(X(s))}" y1="${r(Z(z + len / 2))}" x2="${r(X(s + (hash(i, 24) - 0.5)))}" y2="${r(Z(z - len / 2))}" stroke="#2a211b" stroke-opacity=".3" stroke-width="1"/>`);
+  o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
+  o.push(txt(FX4, 26, '主崖与崖宅 · 1:1 真实比例横剖面 (3.1 版)', 'title'));
+  o.push(txt(FX4, 43, '水平与垂直同比例: 展现 +412~+440 米精悍竖向崖宅悬于 460 米巨崖之巅的真实压迫感, 顶层后廊直穿刀刃山脊俯瞰火山口', 'sub'));
+
+  o.push(`<g clip-path="url(#cliffClip)">`);
+  o.push(`<rect x="${FX4}" y="${FY4}" width="${FW4}" height="${FH4}" fill="#e4edf2"/>`);
+  // 大洋海水 (z <= 0)
+  o.push(`<rect x="${FX4}" y="${r(Zs(0))}" width="${r(Xs(40) - FX4)}" height="${r(Zs(zMin) - Zs(0))}" fill="#7fa2b7"/>`);
+  o.push(`<line x1="${FX4}" y1="${r(Zs(0))}" x2="${r(Xs(5))}" y2="${r(Zs(0))}" stroke="#1b435c" stroke-width="1.5"/>`);
+
+  // 巨崖玄武岩体与北坡云雾林植被表层
+  o.push(`<path d="${pathPts(rockPts, true)}" fill="url(#basaltSec)" stroke="#1e2328" stroke-width="1.4"/>`);
+  // 北坡云雾林树冠带 (s > 175m)
+  const forestBand = northSlope.filter(p => p[0] >= 170);
+  const fPts = [
+    ...forestBand.map(([s, z]) => [Xs(s), Zs(z + 9)]),
+    ...[...forestBand].reverse().map(([s, z]) => [Xs(s), Zs(z)]),
+  ];
+  o.push(`<path d="${pathPts(fPts, true)}" fill="${C.forest}" opacity="0.82"/>`);
+
+  // 柱状节理竖裂纹 (上层 +250 ~ +460m 尤为显著)
+  for (let s = 22; s <= 155; s += 9) {
+    const zTop = s <= 124 ? lerpLine(CLIFF, s) : lerpLine([[124, 460], ...northSlope], s);
+    o.push(`<line x1="${r(Xs(s))}" y1="${r(Zs(zTop - 3))}" x2="${r(Xs(s))}" y2="${r(Zs(Math.max(-90, zTop - 210)))}" stroke="#2f3339" stroke-width="0.7" opacity="0.55"/>`);
   }
+
+  // 远古基核防护壳体边界 (s >= 135m 向深处包覆)
+  o.push(`<path d="M${Q(116, 444)} L${Q(142, 446)} L${Q(240, 250)} L${Q(310, 120)} L${Q(330, -115)}" fill="none" stroke="#9ec4d8" stroke-width="2" stroke-dasharray="8 4"/>`);
+
+  // ── 1) 崖宅 (+412 ~ +440m, 嵌于 s ≈ 97~100m 上层平直绝壁岩槽) ──
+  // 底部重工实验舱 (412~423m, 向岩体内部纵深 60m: s = 97 ~ 157m)
+  o.push(`<polygon points="${Q(97, 412)} ${Q(157, 412)} ${Q(157, 422.5)} ${Q(98, 422.5)}" fill="${C.chamber}" stroke="#182026" stroke-width="1.1"/>`);
+  // 能量核心与吊车梁
+  o.push(`<circle cx="${r(Xs(136))}" cy="${r(Zs(416.5))}" r="${r(3.2 * k)}" fill="#57bed4" stroke="#1b2830" stroke-width="0.8"/>`);
+  // 底部轻薄折角装甲腹板收束于 +412m 绝壁 + 纤薄悬挑起降甲板 (+413m, 向南平直探出 20m: s = 77 ~ 98m)
+  o.push(`<polygon points="${Q(77, 413.6)} ${Q(98, 413.6)} ${Q(98, 411.8)} ${Q(92, 412.2)} ${Q(77, 412.7)}" fill="${C.titaniumLight}" stroke="#182026" stroke-width="1.1"/>`);
+  // 甲板上停靠座机侧剖面
+  o.push(`<polygon points="${Q(81, 414.8)} ${Q(88, 416.2)} ${Q(94, 414.8)} ${Q(93, 413.8)} ${Q(82, 413.8)}" fill="#7f8e9b" stroke="#182026" stroke-width="0.8"/>`);
+
+  // 中央两层钢化玻璃幕墙主厅 (423~435m, 前方通透幕墙 s = 95.5 ~ 118m + 后方岩内私密起居生活舱 s = 118 ~ 146m)
+  o.push(`<rect x="${r(Xs(95.5))}" y="${r(Zs(435))}" width="${r(22.5 * k)}" height="${r(12 * k)}" fill="#2c4456" stroke="#182026" stroke-width="1"/>`);
+  o.push(`<rect x="${r(Xs(96.5))}" y="${r(Zs(434.2))}" width="${r(20.5 * k)}" height="${r(10.5 * k)}" fill="${C.amber}" opacity="0.65"/>`);
+  o.push(`<line x1="${r(Xs(95.5))}" y1="${r(Zs(429))}" x2="${r(Xs(146))}" y2="${r(Zs(429))}" stroke="#1c252c" stroke-width="1.2"/>`);
+  o.push(`<rect x="${r(Xs(118))}" y="${r(Zs(435))}" width="${r(28 * k)}" height="${r(12 * k)}" fill="${C.chamber}" stroke="#182026" stroke-width="1"/>`);
+  // 轻薄钛金属前侧鞘轮廓线
+  o.push(`<line x1="${r(Xs(95.5))}" y1="${r(Zs(440))}" x2="${r(Xs(95.5))}" y2="${r(Zs(423))}" stroke="#cad5de" stroke-width="1.8"/>`);
+
+  // 顶部装甲冠层 (435~440m, 平切嵌入崖顶肩部 + 向北穿通狭窄刀刃山脊的后通道 s = 95.5 ~ 149m!)
+  o.push(`<polygon points="${Q(95.2, 440)} ${Q(114, 440)} ${Q(114, 435.2)} ${Q(95.2, 435.2)}" fill="${C.titanium}" stroke="#182026" stroke-width="1.1"/>`);
+  // 后山廊道直穿北坡观景口 (s = 114 ~ 149m, z = 435.5m)
+  o.push(`<polygon points="${Q(114, 438.4)} ${Q(149, 437.2)} ${Q(149, 434.2)} ${Q(114, 435.4)}" fill="#e5dfd3" stroke="#182026" stroke-width="0.9"/>`);
+
+  // 竖井: 从崖宅后方 (s = 142m) 笔直下通机库洞厅与潜艇内港
+  o.push(`<rect x="${r(Xs(140))}" y="${r(Zs(435))}" width="${r(5 * k)}" height="${r(Zs(-95) - Zs(435))}" fill="#d5cfc3" stroke="#20262c" stroke-width="0.9"/>`);
+
+  // ── 2) 南水平电磁弹射口 (+95m, 中层玄武岩壁 s = 34m) 与弹射隧道 ──
+  o.push(`<polygon points="${Q(33, 99)} ${Q(520, 93)} ${Q(520, 86)} ${Q(33, 92)}" fill="#ebb9a4" stroke="${C.tunnel}" stroke-width="1.1"/>`);
+  // 机库洞厅南端局部 (s = 420 ~ 520m, +70 ~ +115m)
+  o.push(`<path d="M${Q(420, 70)} L${Q(420, 102)} Q${Q(470, 118)} ${Q(520, 114)} L${Q(520, 70)} Z" fill="${C.chamber}" stroke="#1c2228" stroke-width="1.2"/>`);
+
+  // ── 3) 水下主闸门 (−80m, 藏于深潜崖脚崩积巨石裙 s = -45m 下, 经 350m 隧道通潜艇内港 s = 280~520m) ──
+  // 崖脚崩积巨石块示意
+  for (const [bs, bz, br] of [[-24, -44, 6], [-34, -60, 7], [-44, -73, 6.5], [-14, -24, 5.5]]) {
+    o.push(`<circle cx="${r(Xs(bs))}" cy="${r(Zs(bz))}" r="${r(br * k)}" fill="#3d4249" stroke="#22262b" stroke-width="0.8"/>`);
+  }
+  o.push(`<polygon points="${Q(-46, -76)} ${Q(280, -70)} ${Q(280, -84)} ${Q(-46, -88)}" fill="#6a94ad" stroke="#1b394d" stroke-width="1.1"/>`);
+  // 潜艇内港局部 (s = 280 ~ 520m, -95 ~ +25m)
+  o.push(`<path d="M${Q(280, -95)} L${Q(280, 12)} Q${Q(390, 28)} ${Q(520, 24)} L${Q(520, -95)} Z" fill="${C.chamber}" stroke="#1c2228" stroke-width="1.2"/>`);
+  o.push(`<rect x="${r(Xs(280))}" y="${r(Zs(0))}" width="${r(240 * k)}" height="${r(95 * k)}" fill="#6a94ad"/>`);
+
+  // ── 三段式主崖括线标注 (左侧海面与空中空白区) ──
+  const brkX = Xs(-216);
+  const tiers = [
+    [460, 250, '上层 +250 ~ +460 m', '近乎垂直的柱状节理绝壁;', '+412~+440 m 嵌竖向崖宅, 顶为刀刃山脊'],
+    [250,  40, '中层 +40 ~ +250 m',  '约 65° 阶梯状玄武岩壁:', '80° 陡坎夹 8–15 m 碎石窄台'],
+    [ 40, -40, '底层 −40 ~ +40 m',   '深潜崖与海蚀崩积巨石裙,', '水下岩壁继续近乎垂直插向深海'],
+  ];
+  for (const [za, zb, nm, d1, d2] of tiers) {
+    o.push(`<path d="M${r(brkX + 7)},${r(Zs(za) + 2)} h-7 V${r(Zs(zb) - 2)} h7" fill="none" stroke="${C.ink}" stroke-width="1.2"/>`);
+    const my = (Zs(za) + Zs(zb)) * 0.5;
+    o.push(txt(brkX + 13, my - 9, nm, 's b halo'));
+    o.push(txt(brkX + 13, my + 5, d1, 'xs halo'));
+    o.push(txt(brkX + 13, my + 18, d2, 'xs halo'));
+  }
+
+  // 细部引线说明
+  const LB = (s0, z0, s1, z1, label, cls = 's halo') => {
+    o.push(`<path d="M${Q(s0, z0)} L${Q(s1, z1)}" fill="none" stroke="${C.ink}" stroke-width="0.85"/>`);
+    const dx = cls.includes('end') ? -5 : 5;
+    o.push(txt(Xs(s1) + dx, Zs(z1) + 4, label, cls));
+  };
+  LB(124, 460, 82, 474, '主崖岬刀刃绝顶 +460 m', 's b halo end');
+  LB(95, 438, 48, 448, '顶部装甲冠层 (435–440 m)', 'xs b halo end');
+  LB(95, 429, 44, 430, '双层钢化玻璃幕墙主厅 (423–435 m)', 'xs b halo end');
+  LB(78, 413, 38, 412, '纤薄悬挑起降甲板 +413 m (底缘锚入 +412 m)', 'xs b halo end');
+  LB(149, 436, 205, 448, '山体后通道: 穿出刀刃山脊直望火山口与镜湖', 'xs b halo');
+  LB(155, 417, 210, 416, '底部重工实验舱 (向岩内纵深 60 m)', 'xs b halo');
+  LB(143, 305, 195, 305, '垂直联络竖井 (下通机库与内港)', 'xs whalo');
+  LB(34, 95, -8, 114, '南水平弹射口 +95 m (战机贴海冲出)', 's b halo end');
+  LB(445, 92, 395, 134, '机库洞厅 (+70~+115 m, 位于风草甸正下方)', 'xs b whalo end');
+  LB(-46, -82, -62, -98, '主闸门 −80 m (藏在深潜崖脚巨石裙下)', 'xs b whalo end');
+  LB(350, -35, 350, -35, '潜艇内港 (−95~+25 m, 距崖面 280 m 起)', 'xs b whalo');
+
   o.push(`</g>`);
-  // 崖顶丛林、缓台灌木、崩积巨石
-  for (let s = 100, i = 0; s <= 272; s += 7, i++) o.push(`<circle cx="${r(X(s))}" cy="${r(Z(surf(s) + 5 + (i % 3) * 2))}" r="${r((5 + ((i * 5) % 4)) * k)}" fill="${i % 4 ? C.landDark : '#5f9a66'}"/>`);
-  for (const [a, b] of [[30, 45], [55, 73]]) for (let s = a; s <= b; s += 3.2) o.push(`<circle cx="${r(X(s))}" cy="${r(Z(surf(s) + 1.6))}" r="${r((1.5 + hash(s, 31) * 1.6) * k)}" fill="${hash(s, 32) > 0.4 ? '#5c8a57' : '#7aa268'}"/>`);
-  for (let i = 0; i < 46; i++) { const s = -98 + hash(i, 41) * 122, rad = 1.6 + hash(i, 42) * (s > -30 ? 5 : 3.4); o.push(`<path d="${crPath(blob({ x: s, y: surf(s) + rad * 0.5, rx: rad * 1.2, ry: rad }, i + 400, 8, 1.6), true, p => q(p[0], p[1]))}" fill="${hash(i, 43) > 0.5 ? '#2c2520' : '#463b33'}"/>`); }
-  for (const [s, hgt] of [[-78, 26], [-52, 15]]) o.push(`<path d="M${q(s - 5, surf(s - 5))}L${q(s - 3, hgt * 0.6)}L${q(s - 1, hgt)}L${q(s + 2, hgt * 0.8)}L${q(s + 5, surf(s + 5))}Z" fill="#241d19"/>`);
-  o.push(`<path d="M${range(-104, 4, 6).map((s, i) => q(s, (i % 2 ? 1.6 : -0.8))).join('L')}" fill="none" stroke="#fff" stroke-width="3" opacity=".9"/>`);
-  o.push(`<rect x="${FX4}" y="${r(Z(0))}" width="${r(X(-98) - FX4)}" height="2" fill="#fff" opacity=".5"/>`);
 
-  // 基核壳体边缘
-  const hull = [[272, 176], [150, 186], [100, 178], [92, 146], [86, 118], [70, 60], [45, 5], [20, -60], [0, -112]];
-  o.push(`<path d="M${hull.map(p => q(...p)).join('L')}" fill="none" stroke="${C.hull}" stroke-width="2.4" stroke-dasharray="10 4" stroke-linejoin="round"/>`);
-
-  // 岩体内的空间
-  // 后方岩内居住洞室与前方悬挑主厅贯通(s = 70 ~ 156 m, z = 142 ~ 168 m)
-  const sp4 = (pts, attrs) => `<path d="M${pts.map(p => q(p[0], p[1])).join('L')}Z" ${attrs}/>`;
-  o.push(sp4([[70, 167.5], [156, 167.5], [156, 142], [78, 142]], 'fill="#f5e4c3" stroke="#2a2420" stroke-width="1"'));
-  o.push(`<path d="M${q(70, 167.5)}L${q(98, 167.5)}L${q(98, 142)}L${q(78, 142)}Z" fill="url(#atriumGlow)" opacity=".88"/>`);
-  // 三层错层水平挑台楼板(z = 160, 153, 146 m),从岩内向前探至斜切幕墙内侧
-  for (const [zf, sf] of [[160, 72.8], [153, 75], [146, 77.2]]) {
-    o.push(`<rect x="${r(X(sf))}" y="${r(Z(zf))}" width="${r((156 - sf) * k)}" height="${r(1.2 * k)}" fill="#2a2420" stroke="#ffe7b0" stroke-width=".7"/>`);
-    o.push(`<path d="M${q(sf + 0.5, zf)}V${r(Z(zf + 1.4))}" stroke="#cfe3ea" stroke-width=".9"/>`);
+  // 坐标框与 1:1 比例尺
+  o.push(`<rect x="${FX4}" y="${FY4}" width="${FW4}" height="${FH4}" fill="none" stroke="${C.ink}" stroke-width="1.2"/>`);
+  o.push(txt(FX4 + 10, FY4 + 18, '南 (外海深潜崖)', 't b halo'));
+  o.push(txt(FX4 + FW4 - 10, FY4 + 18, '北 (火山口盆地 · 风草甸)', 't b halo end'));
+  for (let z = -100; z <= 450; z += 50) {
+    o.push(`<line x1="${FX4 - 5}" y1="${r(Zs(z))}" x2="${FX4}" y2="${r(Zs(z))}" stroke="${C.ink}"/>`);
+    o.push(txt(FX4 - 8, Zs(z) + 3.5, `${z > 0 ? '+' + z : z}m`, 'xs end'));
   }
-  o.push(`<rect x="${r(X(84))}" y="${r(Z(138))}" width="${r(104 * k)}" height="${r(18 * k)}" rx="4" fill="url(#labglow)" stroke="#14181c" stroke-width="1.4"/>`);
-  o.push(`<path d="M${q(90, 134)}H${r(X(184))}" stroke="#14181c" stroke-width="3"/><path d="M${q(112, 134)}V${r(Z(127))}M${q(160, 134)}V${r(Z(125.5))}" stroke="#14181c" stroke-width="1.6"/>`);
-  o.push(`<circle cx="${r(X(140))}" cy="${r(Z(126.5))}" r="${4.5 * k}" fill="url(#core)"/><circle cx="${r(X(140))}" cy="${r(Z(126.5))}" r="${1.6 * k}" fill="#fff"/>`);
-  o.push(`<path d="M${q(96, 120.2)}l${r(4 * k)},${r(-3 * k)}l${r(9 * k)},${r(-0.6 * k)}l${r(6 * k)},${r(2 * k)}l${r(1 * k)},${r(1.6 * k)}z" fill="#20262c" stroke="#7fd4ff" stroke-width=".8"/>`);
-  // 竖井与水下隧道
-  o.push(`<rect x="${r(X(196))}" y="${r(Z(165))}" width="${6 * k}" height="${r((165 - zMin) * k)}" fill="#f4f1e6" stroke="#2a2420" stroke-width=".8"/><path d="M${q(156, 150)}H${r(X(196))}M${q(188, 122)}H${r(X(196))}" stroke="#f4f1e6" stroke-width="5"/>`);
-  o.push(`<rect x="${r(X(-112))}" y="${r(Z(-70))}" width="${r((sMax + 112) * k)}" height="${20 * k}" fill="#7db7e6" stroke="#0d2233" stroke-width="1"/><rect x="${r(X(-114))}" y="${r(Z(-67))}" width="5" height="${14 * k}" fill="#0d2233" stroke="#7fd4ff" stroke-width="1.2"/>`);
-
-  // 南发射口:水平弹射隧道,开在第一级缓台后壁
-  o.push(`<defs><marker id="ar4r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="${C.under}"/></marker></defs>`);
-  o.push(`<rect x="${r(X(48))}" y="${r(Z(74))}" width="${r((sMax - 48) * k)}" height="${16 * k}" fill="#e6e1d6" stroke="#2a2420" stroke-width="1"/><rect x="${r(X(47))}" y="${r(Z(74))}" width="4" height="${16 * k}" fill="#1b1410" stroke="#ff9d3b" stroke-width="1.2"/>`);
-  o.push(`<path d="M${q(130, 66)}L${q(-38, 66)}" stroke="${C.under}" stroke-width="2" stroke-dasharray="8 4" marker-end="url(#ar4r)"/>`);
-  // 崖宅 —— 侧面:前掠折板楔形悬挑剖面(悬在半山腰,底部在 +115 m 收束入岩)
-  // 内倾式斜切玻璃幕墙剖面
-  o.push(`<line x1="${r(X(70))}" y1="${r(Z(167.2))}" x2="${r(X(78))}" y2="${r(Z(142))}" stroke="#162129" stroke-width="3.6"/>`);
-  o.push(`<line x1="${r(X(70))}" y1="${r(Z(167.2))}" x2="${r(X(78))}" y2="${r(Z(142))}" stroke="#9ed3e6" stroke-width="1.4"/>`);
-  // 上掠折板刃翼剖面(探出岩鼻约 22 m)
-  o.push(sp4([[98, 176], [66, 168], [70, 167], [96, 168.2]], 'fill="url(#bladeTop)" stroke="#14181c" stroke-width="1.1"'));
-  o.push(`<path d="M${q(98, 176)}L${q(66, 168)}" stroke="#dce4ea" stroke-width="1.3"/>`);
-  // 远景西翼悬挑露台与泳池(+148.5 m,位于剖面西侧远景)
-  o.push(sp4([[75, 148.5], [58, 148.5], [62, 146.2], [76, 146.2]], 'fill="#5c6770" fill-opacity=".75" stroke="#181d22" stroke-width=".8" stroke-dasharray="3 2"'));
-  o.push(`<rect x="${r(X(59))}" y="${r(Z(149.3))}" width="${r(10 * k)}" height="${r(0.8 * k)}" fill="#5fa9b8" opacity=".85"/>`);
-  // 中脊斜梁剖面
-  o.push(sp4([[86, 143], [68, 139], [74, 137], [88, 138]], 'fill="url(#bladeSide)" stroke="#14181c" stroke-width="1"'));
-  o.push(`<path d="M${q(86, 143)}L${q(68, 139)}" stroke="#b8c4cd" stroke-width="1"/>`);
-  // 下层折板起降舌台与底部半山腰收束龙骨(锚入 +115 m 崖壁)
-  o.push(sp4([[86, 120.5], [54, 120.5], [58, 118.2], [72, 118.2], [90, 115], [90, 120.5]], 'fill="#6d7882" stroke="#14181c" stroke-width="1"'));
-  o.push(sp4([[72, 118.2], [90, 115], [90, 120.5]], 'fill="url(#bladeSide)" stroke="#14181c" stroke-width=".9"'));
-  o.push(`<path d="M${q(86, 120.5)}H${r(X(54))}" stroke="#dce4ea" stroke-width="1.1"/>`);
-  // 人(立于起降舌台,1.8 m)
-  o.push(`<g stroke="#111" stroke-width="1.2" fill="#111"><circle cx="${r(X(66))}" cy="${r(Z(122.1))}" r="1.1"/><line x1="${r(X(66))}" y1="${r(Z(121.8))}" x2="${r(X(66))}" y2="${r(Z(120.5))}"/></g>`);
-  o.push(`</g>`);
-
-  // 轴与边框
-  for (const z of [-100, -50, 0, 50, 100, 150, 200]) o.push(`<line x1="${FX4 - 5}" y1="${r(Z(z))}" x2="${FX4}" y2="${r(Z(z))}" stroke="${C.ink}"/>` + txt(FX4 - 8, Z(z) + 3.5, z > 0 ? '+' + z : z, 'xs end'));
-  o.push(txt(FX4 - 8, FY4 - 6, '米', 'xs end') + `<rect x="${FX4}" y="${FY4}" width="${FW4}" height="${FH4}" fill="none" stroke="${C.ink}"/>`);
-  o.push(txt(FX4 + 8, FY4 + 18, '南(大洋)', 't b halo') + txt(FX4 + FW4 - 8, FY4 + 18, '北(岛内)', 't b halo end'));
-
-  // 三段式标注(左侧括线)
-  const bandX = X(-146);
-  for (const [za, zb, name, d1, d2] of [[209, 120, '上层 +120 ~ +209 m', '柱状节理绝壁;+145 ~ +175 m 处', '岩鼻向外前倾约 8 米,崖顶圆润'], [120, 20, '中层 +20 ~ +120 m', '阶梯状陡坡,总体约 57°:', '75° 陡坎 + 宽 12–20 米的 30° 缓台'], [20, -30, '底层 −30 ~ +20 m', '海蚀平台与崩积巨石裙,', '向外伸出约 90 米']]) {
-    o.push(`<path d="M${r(bandX + 6)},${r(Z(za) + 2)}h-6V${r(Z(zb) - 2)}h6" fill="none" stroke="#fff" stroke-width="2.6"/><path d="M${r(bandX + 6)},${r(Z(za) + 2)}h-6V${r(Z(zb) - 2)}h6" fill="none" stroke="${C.ink}" stroke-width="1.2"/>`);
-    const ty = (Z(za) + Z(zb)) / 2;
-    o.push(txt(bandX + 12, ty - 10, name, 's b halo') + txt(bandX + 12, ty + 4, d1, 'xs halo') + txt(bandX + 12, ty + 17, d2, 'xs halo'));
+  for (let s = -200; s <= 500; s += 100) {
+    o.push(`<line x1="${r(Xs(s))}" y1="${FY4 + FH4}" x2="${r(Xs(s))}" y2="${FY4 + FH4 + 5}" stroke="${C.ink}"/>`);
+    o.push(txt(Xs(s), FY4 + FH4 + 16, `${s > 0 ? '+' + s : s}m`, 'xs mid'));
   }
-  const lead = (a, b) => o.push(`<path d="M${q(...a)}L${q(...b)}" stroke="${C.ink}" stroke-width=".8" fill="none"/>`);
-  const LB = (a, b, s, cls = 's halo') => { lead(a, b); o.push(txt(X(b[0]) + (cls.includes('end') ? -4 : 4), Z(b[1]) + 4, s, cls)); };
-  LB([68, 168], [16, 190], '上掠折板刃翼:最大探出岩鼻约 22 米', 's b halo end');
-  LB([74, 154], [26, 148], '内凹斜切幕墙与三层错层主厅', 's halo end');
-  LB([56, 119.5], [10, 132], '折板起降舌台 +119 m(底部龙骨收束于半山腰)', 's halo end');
-  LB([48, 68], [-6, 94], '南发射口 +65 m:水平弹射', 's b halo end');
-  LB([150, 134], [214, 112], '重工实验室(深入岩体约 100 米)', 's b halo');
-  LB([130, 160], [214, 178], '后方岩内居住层', 's halo');
-  LB([199, 60], [214, 60], '竖井:下通机库洞厅与内港', 's halo');
-  LB([-114, -74], [-104, -98], '主闸门 −80 m,藏在乱石坡之下', 's b dhalo');
-  LB([120, -80], [150, -98], '水下隧道,通向内港', 's dhalo');
-  LB([-66, 10], [-100, 44], '海蚀柱', 's halo end');
-  LB([180, 206], [150, 226], '圆润的崖顶山脊,覆满丛林', 's halo end');
-  o.push(`<path d="M${r(X(232))},${r(Z(178) + 4)}h16" stroke="${C.hull}" stroke-width="2.4" stroke-dasharray="10 4"/>` + txt(X(232), Z(178) + 20, '基核壳体', 'xs b halo'));
-  o.push(`<g transform="translate(${FX4},${FY4 + FH4 + 14})"><rect width="${50 * k}" height="5" fill="${C.ink}"/><text x="${50 * k + 8}" y="6" class="xs">50 米(水平与垂直同比例)</text></g>`);
-  o.push('</svg>');
+  o.push(`<g transform="translate(${FX4 + 14},${FY4 + FH4 - 22})">
+    <rect x="-6" y="-13" width="215" height="21" rx="4" fill="rgba(255,255,255,.88)"/>
+    <rect width="${r(50 * k)}" height="5" fill="${C.ink}"/>
+    <text x="${r(50 * k + 8)}" y="5" class="xs b">50 米 (水平与垂直严格 1:1 同比例)</text>
+  </g>`);
+  o.push(`</svg>`);
   return o.join('\n');
 }
 
-// ═════════ 输出 ═════════
+// ═════════ 6. 生成 SVG 与 岛屿草图.html ═════════
 const sec = sectionSVG();
-const figs = [['平面图', planSVG()], ['南立面图', elevSVG()], ['南北剖面图', sec.svg], ['主崖剖面图', cliffSVG()]];
+const figs = [
+  ['平面图', planSVG()],
+  ['南立面图', elevSVG()],
+  ['南北剖面图', sec.svg],
+  ['主崖剖面图', cliffSVG()],
+];
 for (const [name, svg] of figs) writeFileSync(join(here, `${name}.svg`), svg, 'utf8');
+
 const html = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>岛屿草图</title>
+<title>岛屿基地草图 · 3.1 定稿版</title>
 <style>
-  body{margin:0;background:#eef1f3;color:#22303a;font-family:${FONT};line-height:1.6}
-  main{max-width:1000px;margin:0 auto;padding:24px 16px 48px}
-  h1{font-size:24px;margin:0 0 4px} p.lead{margin:0 0 20px;color:#4a5a66;font-size:14px}
-  figure{margin:0 0 22px;background:#fff;border:1px solid #d5dbe0;border-radius:10px;padding:10px;overflow:hidden}
+  body{margin:0;background:#e9eef2;color:#1d2832;font-family:${FONT};line-height:1.65}
+  header{background:#141e27;color:#eef4f8;padding:20px 18px;border-bottom:1px solid #2b3c4a}
+  header .wrap{max-width:1020px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+  header h1{font-size:22px;margin:0;letter-spacing:.5px}
+  header p{margin:4px 0 0;color:#9fb2c0;font-size:13.5px}
+  header a.btn{color:#181307;background:#ebb35a;text-decoration:none;font-weight:700;font-size:13.5px;padding:7px 15px;border-radius:6px}
+  main{max-width:1020px;margin:0 auto;padding:22px 16px 52px}
+  figure{margin:0 0 24px;background:#fff;border:1px solid #cdd6de;border-radius:8px;padding:12px;overflow:hidden;box-shadow:0 2px 10px rgba(15,25,35,.05)}
   figure svg{display:block;width:100%;height:auto}
-  figcaption{font-size:13px;color:#4a5a66;padding:8px 6px 2px}
-</style></head><body><main>
-<h1>岛屿基地草图</h1>
-<p class="lead">依据《岛屿设定.md》2.3 生成。岸线和地形由同一套数据计算,地名均为暂定名。</p>
-<figure>${figs[0][1]}<figcaption>平面图:南岸不是一整片悬崖——三座岬角之间夹着海蚀裂谷、一道沿断裂发育的峡谷和两处礁石滩。北面是月湾沙滩和浅水潟湖,礁盘错落分布。</figcaption></figure>
-<figure>${figs[1][1]}<figcaption>南立面图:上图用深浅表示远近,崖线在礁石滩和峡谷处断开。下图是崖宅的正面:冷灰斜切折板壳体悬在半山腰岩鼻上,内嵌多层暖光主厅与重工实验舱。</figcaption></figure>
-<figure>${figs[2][1]}<figcaption>南北剖面图:机库从洞顶垂直发射,也可以从南端的隧道水平弹射出崖面。最深处是地下城,像飞船内部一样由许多舱室组成。</figcaption></figure>
-<figure>${figs[3][1]}<figcaption>主崖与崖宅剖面:三段式的玄武岩海蚀崖。崖宅以斜切折板从半山腰上部岩鼻凌厉探出,底部在 +116 米处收束锚入崖壁;下方是水平发射口,主闸门藏在水下乱石坡之下。</figcaption></figure>
+  figcaption{font-size:13px;color:#425360;padding:10px 6px 2px;border-top:1px solid #eef2f5;margin-top:8px}
+  figcaption b{color:#1a252e}
+</style></head><body>
+<header><div class="wrap">
+  <div>
+    <h1>岛屿基地工程草图 · 3.1 定稿版</h1>
+    <p>依据《岛屿设定.md》3.1 同一套几何地形与洞室参数计算生成(平面图 · 南立面与崖宅详图 · 南北纵剖面 · 主崖 1:1 剖面)。</p>
+  </div>
+  <a class="btn" href="/">进入三维漫游 →</a>
+</div></header>
+<script>try{if(window.parent!==window&&window.frameElement)document.querySelector('header').style.display='none';}catch(e){}</script>
+<main>
+<figure>${figs[0][1]}<figcaption><b>图 1 · 平面总图</b>: 向北开口的马蹄形破火山口主岛(面积约 ${area.toFixed(1)} km²)与裂隙海峡劈出的锯齿状东屿; 北岸为黑曜石砾滩峡湾(黑砾湾)与百米悬瀑, 镜湖(138m)与风草甸(165m)深锁于刀刃山脊巨碗内, 唯一地面营区“岩隙营房”隐于镜湖西侧背风岩壁褶皱。</figcaption></figure>
+<figure>${figs[1][1]}<figcaption><b>图 2 · 南立面图与崖宅 1:1 正立面</b>: 上图展现 460 米主崖岬、外海 260 米南剑峰与一线天海蚀拱门的高耸剪影; 下图为 3.1 定稿崖宅(+412~+440m, 宽 34m × 高 28m): 轻薄冷灰钛金属装甲鞘包裹双层防弹钢化玻璃幕墙主厅、顶部观测冠层、内凹重工实验舱与纤薄起降台。</figcaption></figure>
+<figure>${figs[2][1]}<figcaption><b>图 3 · 南北纵剖面 B–B′</b>: 自南太平洋深潜崖穿过 460 米刀刃主脊、风草甸、镜湖至黑砾湾; 基核整体防护壳体向下延伸至 −670 米, 内部错落排布机库洞厅(+70~+115m)、潜艇内港(−95~+25m)、工坊、聚变堆(−320m)、AI 中枢与三层八舱段末日地下城(−535~−440m)。</figcaption></figure>
+<figure>${figs[3][1]}<figcaption><b>图 4 · 主崖与崖宅 1:1 真实比例剖面</b>: 水平与垂直严格等比例。崖宅自崖顶肩部垂降嵌于上层柱状玄武岩槽, 底缘在 +412 米干净收束锚入绝壁, 下方留有整整四百米纯粹自然绝壁; 顶层后廊直接穿出狭窄刀刃山脊俯瞰火山口与镜湖。</figcaption></figure>
 </main></body></html>`;
 writeFileSync(join(root, '岛屿草图.html'), html, 'utf8');
 
 const f1 = n => n.toFixed(2);
-console.log(`面积 ${area.toFixed(1)} km² | 东西 ${f1(ext[0])}~${f1(ext[1])} 南北 ${f1(ext[2])}~${f1(ext[3])}`);
+console.log(`面积 ${area.toFixed(2)} km² | 东西 ${f1(ext[0])}~${f1(ext[1])} km (${f1(ext[1] - ext[0])} km) | 南北 ${f1(ext[2])}~${f1(ext[3])} km (${f1(ext[3] - ext[2])} km)`);
 console.log(`最高点 ${Math.round(peak.h)} m @ (${f1(peak.x)}, ${f1(peak.y)}) | 镜湖水面 ${lakeLevel} m | 风草甸 ${meadowLevel} m`);
-console.log('山丘:', HILLS.filter(h => h[4]).map(h => `${h[4]} ${Math.round(H(h[0], h[1]))} m`).join(' | '));
+console.log('尖塔与山峰:', SPIRES.map(s => `${s[4]} ${Math.round(H(s[0], s[1]))}m`).join(' | '), `| 东屿 ${ISLET.h}m | 南剑峰 ${SWORD_PEAK.h}m`);
 console.log('崖宅岸点', villaCoast.map(f1).join(','), '| 剖面处崖顶', Math.round(sec.crestZ), 'm');
-console.log('隧道:', TUNNELS.map(t => `${t.name} 出口(${f1(t.exit[0])},${f1(t.exit[1])}) 长 ${t.len.toFixed(2)} km`).join(' | '));
-console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) 隧道长 ${WEST_GATE.len.toFixed(2)} km`);
-console.log(`剖面 x=${SECTION_X}: 南岸 y=${f1(sec.Y0)} 北岸 y=${f1(sec.Y1)} 湖 ${f1(sec.l0)}~${f1(sec.l1)}`);
-console.log('北水道', channel.map(f1).join(','), '| 礁盘', reefs.filter(f => !f.head).length, '片, 珊瑚丛', reefs.filter(f => f.head).length, '处 | 发生器', gens.length, '座');
+console.log('弹射隧道:', TUNNELS.map(t => `${t.name}(+${t.z}m) 出口(${f1(t.exit[0])},${f1(t.exit[1])}) 长 ${t.len.toFixed(2)} km`).join(' | '));
+console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_GATE.depth}m 隧道长 ${WEST_GATE.len.toFixed(2)} km`);
 
-// ═════════ 三维数据导出(供 三维/ 目录下的 three.js 场景使用) ═════════
+// ═════════ 7. 三维数据导出 (供 三维/ 目录下的 three.js 场景使用) ═════════
 {
-  const { mkdirSync } = await import('node:fs');
   const out3 = join(root, '三维', 'data');
   mkdirSync(out3, { recursive: true });
-  const G = { x0: -3.3, y0: -2.2, step: 0.008, nx: 814, ny: 589 }; // 8 米网格,含周边浅海
-  const N = G.nx * G.ny, top = CLIFF[CLIFF.length - 1][1];
-  // 悬崖剖面的高度场版本:从正上方看到的最高面(岩鼻下方的悬空部分无法用高度场表示)
-  const HF = [[0, 0], [12, 8], [22, 20], [29.5, 48], [45.5, 57], [53.8, 88], [73.8, 99.5], [79.8, 122], [84.8, 125], [85.2, 172], [88, 180], [96, 188], [110, 198], [135, 205], [165, top]];
-  // 粗网格:到各类海岸的距离与就近崖高
-  const CG = { x0: G.x0, y0: G.y0, step: 0.04, nx: Math.ceil(((G.nx - 1) * G.step) / 0.04) + 2, ny: Math.ceil(((G.ny - 1) * G.step) / 0.04) + 2 };
+  // 7 米高精度网格, 覆盖主岛、东屿、南剑峰、北暗礁带及四周深潜崖海域
+  const G = { x0: -2.65, y0: -2.15, step: 0.007, nx: 708, ny: 622 };
+  const N = G.nx * G.ny, top = CLIFF[CLIFF.length - 1][1]; // 460
+  // 高度场版三段式主崖剖面
+  const HF = CLIFF;
+
+  // 粗网格加速岸线距离场采样
+  const CG = { x0: G.x0, y0: G.y0, step: 0.035, nx: Math.ceil(((G.nx - 1) * G.step) / 0.035) + 2, ny: Math.ceil(((G.ny - 1) * G.step) / 0.035) + 2 };
   const byKind = k => coast.filter(s => s.kind === k).map(s => s.p);
   const beachP = byKind('b'), rockP = byKind('r'), kP = byKind('k'), cP = byKind('c'), cliffAll = cliffS.map(s => s.p);
   const mk = () => new Float32Array(CG.nx * CG.ny);
   const gAll = mk(), gC = mk(), gK = mk(), gNo = mk(), gBe = mk(), gRk = mk(), gCr = mk();
   for (let j = 0; j < CG.ny; j++) for (let i = 0; i < CG.nx; i++) {
-    const x = CG.x0 + i * CG.step, y = CG.y0 + j * CG.step, k = j * CG.nx + i;
-    gAll[k] = Math.sqrt(dist2Pts(cliffAll, x, y)); gC[k] = Math.sqrt(dist2Pts(cP, x, y)); gK[k] = Math.sqrt(dist2Pts(kP, x, y));
-    gNo[k] = Math.sqrt(dist2Pts(northPts, x, y)); gBe[k] = Math.sqrt(dist2Pts(beachP, x, y)); gRk[k] = Math.sqrt(dist2Pts(rockP, x, y));
-    let hs = 0, ws = 0; for (const s of cliffS) { const d2 = (s.p[0] - x) ** 2 + (s.p[1] - y) ** 2, w = 1 / (d2 * d2 + 1e-7); ws += w; hs += w * s.hc; }
-    gCr[k] = hs / ws;
+    const x = CG.x0 + i * CG.step, y = CG.y0 + j * CG.step, idx = j * CG.nx + i;
+    gAll[idx] = Math.sqrt(dist2Pts(cliffAll, x, y));
+    gC[idx] = Math.sqrt(dist2Pts(cP, x, y));
+    gK[idx] = Math.sqrt(dist2Pts(kP, x, y));
+    gNo[idx] = Math.sqrt(dist2Pts(northPts, x, y));
+    gBe[idx] = Math.sqrt(dist2Pts(beachP, x, y));
+    gRk[idx] = Math.sqrt(dist2Pts(rockP, x, y));
+    let hs = 0, ws = 0;
+    for (const s of cliffS) { const d2 = (s.p[0] - x) ** 2 + (s.p[1] - y) ** 2, w = 1 / (d2 * d2 + 1e-7); ws += w; hs += w * s.hc; }
+    gCr[idx] = hs / ws;
   }
   const sAll = sampler(gAll, CG), sC = sampler(gC, CG), sK = sampler(gK, CG), sNo = sampler(gNo, CG), sBe = sampler(gBe, CG), sRk = sampler(gRk, CG), sCr = sampler(gCr, CG);
-  // 到崖线线段的精确距离
-  const segsOf = test => { const out = []; coast.forEach((s, i) => { const t = coast[(i + 1) % coast.length]; if (test(s.kind) && test(t.kind)) out.push([s.p[0], s.p[1], t.p[0], t.p[1]]); }); return out; };
-  const segAll = segsOf(k => k === 'c' || k === 'k'), segC = segsOf(k => k === 'c');
-  const dSeg = (segs, x, y) => { let m = Infinity, qx = x, qy = y; for (const [ax, ay, bx, by] of segs) { const vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy, u = l2 > 1e-12 ? clamp(((x - ax) * vx + (y - ay) * vy) / l2) : 0, px = ax + u * vx, py = ay + u * vy, d = (x - px) ** 2 + (y - py) ** 2; if (d < m) { m = d; qx = px; qy = py; } } return [Math.sqrt(m), qx, qy]; };
-  const toPx3 = p => [(p[0] - G.x0) / G.step + 0.5, (p[1] - G.y0) / G.step + 0.5];
-  const land = scanMask(coastPts.map(toPx3), G.nx, G.ny), lakeM = scanMask(lakePts.map(toPx3), G.nx, G.ny), meadM = scanMask(meadowPts.map(toPx3), G.nx, G.ny), isletM = scanMask(isletPts.map(toPx3), G.nx, G.ny);
-  const zf = new Float32Array(N), mat = new Uint8Array(N); // mat: 0 海底 1 丛林 2 草甸 3 沙滩 4 岩石 5 湖底 6 礁盘
-  for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
-    const x = G.x0 + i * G.step, y = G.y0 + j * G.step, k = j * G.nx + i;
-    let z, m;
-    if (lakeM[k]) { z = lakeLevel - Math.min(LAKE.depth, 0.6 + Math.sqrt(dist2Pts(lakePts, x, y)) * 110); m = 5; }
-    else if (land[k]) {
-      z = H(x, y); m = 1;
-      if (sAll(x, y) < 0.45) {
-        // 崖顶高度取崖线上最近点的高程:崖面按三段式剖面升到崖顶,崖顶之后再平缓过渡回内陆地形
-        const [dd, qx, qy] = dSeg(segAll, x, y), se = (dd * 1000 * top) / Math.max(sCr(x, y), 6), hc = H(qx, qy);
-        if (se < 165) { z = Math.max(0.4, (hc * lerpLine(HF, se)) / top); if (se < 150) { m = 4; z += 1.8 * fbm(x * 55, y * 55, 2) * Math.min(1, z / 6); } }
-        else z += (hc - z) * (1 - sstep(165, 420, se));
-      }
-      if (meadM[k]) m = 2;
-      else if (m === 1) { if (sBe(x, y) < 0.04 && z < 4.5) m = 3; else if (sRk(x, y) < 0.022 && z < 4) m = 4; }
-    } else {
-      const u = U(x, y), zShelf = u < 1 ? -(0.4 + 13.5 * Math.pow(u, 1.2)) : -Math.min(420, 13.9 + 330 * Math.pow(u - 1, 1.35));
-      const dc = sC(x, y), dOther = Math.min(sNo(x, y), sK(x, y));
-      z = zShelf; m = 0;
-      if (dc < dOther + 0.14) { const d = dc < 0.3 ? dSeg(segC, x, y)[0] * 1000 : dc * 1000; z = zShelf + (lerpLine(APRON, -d) - zShelf) * sstep(-0.12, 0.08, dOther - dc); }
+
+  const segsOf = test => {
+    const out = [];
+    coast.forEach((s, i) => { const t = coast[(i + 1) % coast.length]; if (test(s.kind) && test(t.kind)) out.push([s.p[0], s.p[1], t.p[0], t.p[1]]); });
+    return out;
+  };
+  const segAll = segsOf(k => k === 'c' || k === 'r'), segC = segsOf(k => k === 'c');
+  const dSeg = (segs, x, y) => {
+    let m = Infinity, qx = x, qy = y;
+    for (const [ax, ay, bx, by] of segs) {
+      const vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy;
+      const u = l2 > 1e-12 ? clamp(((x - ax) * vx + (y - ay) * vy) / l2) : 0;
+      const px = ax + u * vx, py = ay + u * vy, d = (x - px) ** 2 + (y - py) ** 2;
+      if (d < m) { m = d; qx = px; qy = py; }
     }
-    zf[k] = z; mat[k] = m;
+    return [Math.sqrt(m), qx, qy];
+  };
+
+  const toPx3 = p => [(p[0] - G.x0) / G.step + 0.5, (p[1] - G.y0) / G.step + 0.5];
+  const land = scanMask(coastPts.map(toPx3), G.nx, G.ny);
+  const lakeM = scanMask(lakePts.map(toPx3), G.nx, G.ny);
+  const meadM = scanMask(meadowPts.map(toPx3), G.nx, G.ny);
+  const isletM = scanMask(isletPts.map(toPx3), G.nx, G.ny);
+
+  // mat 编码: 0 海底, 1 云雾林, 2 火山灰草甸(风草甸), 3 黑曜石砾滩(黑砾湾), 4 玄武岩绝壁/尖塔, 5 镜湖湖底, 6 水下暗礁盘
+  const zf = new Float32Array(N), mat = new Uint8Array(N);
+  for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
+    const x = G.x0 + i * G.step, y = G.y0 + j * G.step, idx = j * G.nx + i;
+    let z, m;
+    if (lakeM[idx]) {
+      const dEdge = Math.sqrt(dist2Pts(lakePts, x, y));
+      z = lakeLevel - Math.min(LAKE.depth, 0.9 + dEdge * 155);
+      m = 5;
+    } else if (isletM[idx]) {
+      z = H(x, y);
+      const dIslEdge = Math.sqrt(dist2Pts(isletPts, x, y)) * 1000;
+      if (dIslEdge < 62) {
+        const fac = clamp(dIslEdge / 62);
+        z = Math.max(1.5, z * Math.pow(fac, 0.52));
+      }
+      m = z > 175 || dIslEdge < 55 ? 4 : 1;
+    } else if (land[idx]) {
+      z = H(x, y);
+      m = 1;
+      // 悬崖岸段按三段式剖面急升至崖顶山脊
+      if (sAll(x, y) < 0.36 && sBe(x, y) > 0.045) {
+        const [dd, qx, qy] = dSeg(segAll, x, y);
+        const localCrest = Math.max(sCr(x, y), 25);
+        const hc = Math.max(localCrest, H(qx, qy), z);
+        const spanM = clamp(hc / top, 0.32, 1.0) * 124; // 最高 124m 水平内缩即达 460m 绝顶!
+        const se = (dd * 1000 * 124) / spanM;
+        if (se < 124) {
+          z = Math.max(0.8, (hc * lerpLine(HF, se)) / top);
+          m = 4;
+          z += 2.0 * fbm(x * 60, y * 60, 2, 991) * Math.min(1, z / 12);
+        } else if (se < 250) {
+          const ridgeTop = Math.max(z, hc * 0.97);
+          z = lerp(ridgeTop, z, sstep(124, 250, se));
+        }
+      }
+      if (meadM[idx]) {
+        m = 2;
+      } else if (sBe(x, y) < 0.055 && z < 12) {
+        // 黑砾湾黑曜石砾滩平缓入水
+        const dB = Math.sqrt(dist2Pts(beachP, x, y)) * 1000;
+        z = Math.min(z, 0.4 + dB * 0.14);
+        m = 3;
+      } else if (sK(x, y) < 0.045 && z < 26) {
+        const dK = Math.sqrt(dist2Pts(kP, x, y)) * 1000;
+        z = Math.min(z, 1.2 + dK * 0.32 + 1.4 * Math.abs(vnoise(x * 90, y * 90, 33)));
+        m = 4;
+      }
+      // 高海拔刀刃山脊与玄武岩尖塔裸露黑岩
+      if (m === 1 && (z > 305 || (z > 255 && ridged(x * 9, y * 9, 2, 77) > 0.66))) m = 4;
+    } else {
+      // 海底地形: 一线天水道百米深槽 + 北侧暗礁斜坡 + 南东深潜崖直落 -750m
+      const dMain = Math.sqrt(dist2Pts(coastPts, x, y)) * 1000;
+      const dIsl = Math.sqrt(dist2Pts(isletPts, x, y)) * 1000;
+      const dSea = Math.min(dMain, dIsl);
+      const inStrait = x > 1.18 && x < 1.62 && y > -0.35 && y < 0.58;
+      if (inStrait) {
+        // 一线天水道: 水深约 100m 的陡壁海底裂槽
+        z = -Math.min(108, 6 + dSea * 2.1 + 8 * Math.abs(vnoise(x * 35, y * 35, 81)));
+      } else if (y > 0.34 && x > -1.55 && x < 0.95 && sC(x, y) > 0.16) {
+        // 黑砾湾外海火山崩积暗礁坡 (但非浅水白沙大潟湖, 水深 -12 ~ -140m, 航道槽更深)
+        const dChan = distPolyLine(channelPath, x, y);
+        const chanCut = dChan < 0.09 ? -18 * (1 - dChan / 0.09) : 0;
+        z = -(2.5 + dSea * 0.16) + chanCut;
+      } else {
+        // 深潜崖海底: 120m 外 -180m, 300m 外 -350m, 1000m 外 -750m
+        z = lerpLine(APRON, -dSea);
+      }
+      m = 0;
+    }
+    zf[idx] = z;
+    mat[idx] = m;
   }
-  // 礁盘与珊瑚丛:抬到接近水面
+
+  // 水下暗礁盘与共生礁头抬升至水面下 -0.8 ~ -2.8m
   for (const f of reefs) {
-    const pts = blob(f, f.seed, 22, 1.5), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const pts = blob(f, f.seed, 22, 1.3), xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
     const i0 = Math.max(0, Math.floor((Math.min(...xs) - G.x0) / G.step)), i1 = Math.min(G.nx - 1, Math.ceil((Math.max(...xs) - G.x0) / G.step));
     const j0 = Math.max(0, Math.floor((Math.min(...ys) - G.y0) / G.step)), j1 = Math.min(G.ny - 1, Math.ceil((Math.max(...ys) - G.y0) / G.step));
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      const k = j * G.nx + i, x = G.x0 + i * G.step, y = G.y0 + j * G.step;
-      if (land[k] || !pip(pts, x, y)) continue;
-      zf[k] = Math.max(zf[k], (f.head ? -1.7 : -0.7) - 0.7 * vnoise(x * 180, y * 180)); mat[k] = 6;
+      const idx = j * G.nx + i, x = G.x0 + i * G.step, y = G.y0 + j * G.step;
+      if (land[idx] || isletM[idx] || !pip(pts, x, y)) continue;
+      zf[idx] = Math.max(zf[idx], (f.head ? -2.2 : -1.1) - 0.9 * Math.abs(vnoise(x * 160, y * 160, 66)));
+      mat[idx] = 6;
     }
   }
-  // 东屿
-  for (let k = 0; k < N; k++) if (isletM[k]) {
-    const x = G.x0 + (k % G.nx) * G.step, y = G.y0 + Math.floor(k / G.nx) * G.step, c = Math.cos(-ISLET.rot), s = Math.sin(-ISLET.rot);
-    const lx = (x - ISLET.x) * c - (y - ISLET.y) * s, ly = (x - ISLET.x) * s + (y - ISLET.y) * c, e = clamp((lx / ISLET.rx) ** 2 + (ly / ISLET.ry) ** 2);
-    zf[k] = 1.2 + 21 * Math.pow(1 - e, 0.65) + 2 * fbm(x * 40, y * 40, 2); mat[k] = e > 0.72 ? 4 : 1;
+
+  const hm = new Int16Array(N);
+  let zmin = Infinity, zmax = -Infinity;
+  for (let k = 0; k < N; k++) {
+    hm[k] = Math.round(clamp(zf[k], -3200, 3200) * 10);
+    if (zf[k] < zmin) zmin = zf[k];
+    if (zf[k] > zmax) zmax = zf[k];
   }
-  const hm = new Int16Array(N); let zmin = Infinity, zmax = -Infinity;
-  for (let k = 0; k < N; k++) { hm[k] = Math.round(zf[k] * 10); if (zf[k] < zmin) zmin = zf[k]; if (zf[k] > zmax) zmax = zf[k]; }
   writeFileSync(join(out3, 'height.bin'), Buffer.from(hm.buffer));
   writeFileSync(join(out3, 'mat.bin'), Buffer.from(mat.buffer));
-  // 地物
+
   const r4 = v => Math.round(v * 1e4) / 1e4, P2 = p => [r4(p[0]), r4(p[1])];
   const seaNormal = p => {
-    let bi = 0, bd = Infinity; coast.forEach((s, i) => { const d = (s.p[0] - p[0]) ** 2 + (s.p[1] - p[1]) ** 2; if (d < bd) { bd = d; bi = i; } });
+    let bi = 0, bd = Infinity;
+    coast.forEach((s, i) => { const d = (s.p[0] - p[0]) ** 2 + (s.p[1] - p[1]) ** 2; if (d < bd) { bd = d; bi = i; } });
     const m = coast.length, a = coast[(bi - 5 + m) % m].p, b = coast[(bi + 5) % m].p;
-    let nx = b[1] - a[1], ny = -(b[0] - a[0]); const L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
-    if (onLand(p[0] + nx * 0.03, p[1] + ny * 0.03)) { nx = -nx; ny = -ny; }
+    let nx = b[1] - a[1], ny = -(b[0] - a[0]);
+    const L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
+    if (onMainLand(p[0] + nx * 0.04, p[1] + ny * 0.04)) { nx = -nx; ny = -ny; }
     return [r4(nx), r4(ny)];
   };
+
+  // 为崖宅计算主崖岬精确面朝外海方向 (默认正南偏微西) 及 +412~+440m 槽位锚点
+  const villaN = seaNormal(villaCoast);
+  // 搜索主崖岬沿 -villaN 方向达到 ~425m 的精确悬崖立面位置, 供 villa.js 精准嵌入 +412~+440m!
+  let villaSlotDist = 98;
+  for (let s = 30; s <= 150; s += 2) {
+    const tx = villaCoast[0] - villaN[0] * (s / 1000);
+    const ty = villaCoast[1] - villaN[1] * (s / 1000);
+    const gi = Math.round((tx - G.x0) / G.step), gj = Math.round((ty - G.y0) / G.step);
+    if (gi >= 0 && gi < G.nx && gj >= 0 && gj < G.ny) {
+      const hz = zf[gj * G.nx + gi];
+      if (hz >= 426) { villaSlotDist = s; break; }
+    }
+  }
+
   const meta = {
-    version: '2.3', grid: G, heightScale: 0.1, lakeLevel, meadowLevel, peak: { x: r4(peak.x), y: r4(peak.y), h: Math.round(peak.h) },
-    lake: lakePts.map(P2), meadow: meadowPts.map(P2), river: riverPts.map(P2), falls: FALLS, gullies: gullyPts.map(g => g.map(P2)), feeders: feederPts.map(g => g.map(P2)),
-    villa: { p: P2(villaCoast), n: seaNormal(villaCoast) },
+    version: '3.1',
+    grid: G,
+    heightScale: 0.1,
+    lakeLevel,
+    meadowLevel,
+    peak: { x: r4(peak.x), y: r4(peak.y), h: Math.round(peak.h) },
+    lake: lakePts.map(P2),
+    meadow: meadowPts.map(P2),
+    river: riverPts.map(P2),
+    falls: FALLS,
+    gullies: gullyPts.map(g => g.map(P2)),
+    feeders: feederPts.map(g => g.map(P2)),
+    villa: {
+      p: P2(villaCoast),
+      n: villaN,
+      slotDistM: villaSlotDist,
+      zMin: 412,
+      zMax: 440,
+      deckZ: 413,
+      widthM: 34,
+    },
+    seaArch: SEA_ARCH,
+    swordPeak: SWORD_PEAK,
+    spires: SPIRES.map(s => ({ name: s[4], p: [s[0], s[1]], h: s[5], r: s[3] })),
     tunnels: TUNNELS.map(t => ({ name: t.name, p: P2(t.exit), z: t.z, n: seaNormal(t.exit) })),
+    mainGate: { p: P2(MAIN_GATE.pos), depth: MAIN_GATE.depth, n: villaN },
     westGate: { p: P2(WEST_GATE.pos), depth: WEST_GATE.depth, n: seaNormal(WEST_GATE.pos) },
-    stacks: STACKS, buoys: gens.map(P2), camps: CAMPS, silos: SILOS, sally: SALLY, islet: ISLET,
+    stacks: STACKS.map(s => [s[0], s[1], s[2], s[3], s[4] || '']),
+    buoys: gens.map(P2),
+    camps: CAMPS,
+    silos: SILOS,
+    sally: SALLY,
+    islet: ISLET,
     labels: [
-      ...HEADLANDS.map(h => [h[0], h[1], h[2]]), ...HILLS.filter(h => h[4]).map(h => [h[4], h[0], h[1]]),
-      ['风草甸', MEADOW.x, MEADOW.y], ['镜湖', LAKE.x, LAKE.y], ['帘瀑', FALLS[0], FALLS[1]], ['月湾', 0.3, 0.62], ['西岬', -1.12, 1.78], ['东岬', 1.5, 0.86],
-      ['东屿', ISLET.x, ISLET.y], ['东峡谷', 1.18, -0.5], ['西裂谷', -0.95, -0.95], ['裂湾', 0.3, -0.95], ['东礁滩', 1.72, -0.42], ['西礁滩', -2.44, 0.06], ['北水道', r4(channel[0]), r4(channel[1])],
+      ['主崖岬 460m', -0.22, -1.21],
+      ['西崖角 340m', -1.45, -1.02],
+      ['东南崖角 290m', 0.92, -1.05],
+      ['西尖塔 365m', -1.25, -0.42],
+      ['东尖塔 310m', 0.68, -0.25],
+      ['风草甸 165m', MEADOW.x, MEADOW.y],
+      ['镜湖 138m', LAKE.x, LAKE.y],
+      ['帘瀑', FALLS[0], FALLS[1]],
+      ['黑砾湾', 0.02, 0.50],
+      ['岩隙营房', CAMPS[0][0], CAMPS[0][1]],
+      ['西岬', -0.88, 1.62],
+      ['东岬', 1.00, 0.79],
+      ['东屿 280m', ISLET.x, ISLET.y],
+      ['一线天水道', 1.44, 0.12],
+      ['海蚀拱门', 1.38, 0.42],
+      ['南剑峰 260m', SWORD_PEAK.x, SWORD_PEAK.y],
+      ['东峡谷', 1.14, -0.52],
+      ['西裂谷', -0.82, -0.72],
+      ['裂湾', 0.22, -0.76],
+      ['东礁滩', 1.42, -0.10],
+      ['西礁滩', -1.88, -0.05],
+      ['北暗礁航道', r4(channel[0]), r4(channel[1])],
     ],
   };
   writeFileSync(join(out3, 'island.json'), JSON.stringify(meta), 'utf8');
-  console.log(`三维数据: ${G.nx}×${G.ny} 网格, 高程 ${zmin.toFixed(0)} ~ ${zmax.toFixed(0)} m → 三维/data/`);
+  console.log(`三维数据 (3.1): ${G.nx}×${G.ny} 网格, 高程 ${zmin.toFixed(0)} ~ ${zmax.toFixed(0)} m, 崖宅槽距 ${villaSlotDist} m → 三维/data/`);
 }
