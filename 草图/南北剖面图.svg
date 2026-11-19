@@ -22,7 +22,7 @@
     </linearGradient>
   </defs>
 <rect width="960" height="680" fill="#f5f7f8"/>
-<text x="64" y="26" class="title">岛屿基地 · 南北纵剖面图 B–B′ (3.1 版, 沿 x = −0.25 km)</text>
+<text x="64" y="26" class="title">岛屿基地 · 南北纵剖面图 B–B′ (3.2 版, 沿 x = −0.25 km)</text>
 <text x="64" y="43" class="sub">460 米刀刃主崖与深潜崖 · 破火山口碗底(风草甸 165m / 镜湖 138m) · 远古基核壳体 (−670m) 与三层八舱段地下城</text>
 <g clip-path="url(#secClip)">
 <rect x="64" y="58" width="852" height="576" fill="#e6eef3"/>
@@ -33,7 +33,7 @@
 <path d="M218.6,97.5L239.2,91.4L476.3,197.4L569,255.4L593.1,387.8L572.5,559.7L466,610.8L304.5,610.8L228.9,541.1L215.2,355.3L218.6,164.8Z" fill="#46515c" fill-opacity="0.45" stroke="#9ec4d8" stroke-width="1.8" stroke-dasharray="9 4"/>
 <rect x="356.5" y="103.5" width="6" height="439.9" fill="#cfc8bc" stroke="#22282e" stroke-width="0.9"/>
 <path d="M235.8,107.2 L318.2,248.5 L318.2,294.9 " fill="none" stroke="#cfc8bc" stroke-width="3.2"/>
-<rect x="219.6" y="95.2" width="25.8" height="13" fill="#e9a94c" stroke="#141a20" stroke-width="1.1"/>
+<rect x="224.8" y="95.2" width="20.6" height="13" fill="#e9a94c" stroke="#141a20" stroke-width="1.1"/>
 <line x1="242" y1="97" x2="259.8" y2="100.7" stroke="#f5d28c" stroke-width="2.2"/>
 <path d="M335.4,267 V254 Q393.8,241.9 452.2,254 V267 Z" fill="#e5dfd3" stroke="#1c2228" stroke-width="1.2"/>
 <rect x="360.5" y="222.9" width="4.8" height="27.4" fill="#e8c39e" stroke="#9e4733" stroke-width="0.9"/>
@@ -59,8 +59,8 @@
 <rect x="332" y="537.4" width="55" height="10.7" rx="3" fill="#e5dfd3" stroke="#1a2026" stroke-width="1"/>
 <rect x="400.7" y="537.4" width="55" height="10.7" rx="3" fill="#e5dfd3" stroke="#1a2026" stroke-width="1"/>
 <path d="M318.2,531.8 L119,534.1" stroke="#6c95ad" stroke-width="3.4" stroke-dasharray="5 2"/>
-<path d="M661.8,235.4 L696.1,238.2 L706.4,281.9 L764.8,298.6" fill="none" stroke="#8ad0e6" stroke-width="1.8" stroke-dasharray="4 3"/>
-<text x="232.3" y="80.3" class="s b halo mid">主崖岬刀刃山脊 460m</text>
+<path d="M627.8,235.4L644.6,236.4L661.8,237.3L679,238.2L697.2,239.6L702,281.4L706.8,281.4L733.9,291.2L764.8,299.5" fill="none" stroke="#8ad0e6" stroke-width="1.8" stroke-dasharray="4 3"/>
+<text x="232.3" y="80.3" class="s b halo mid">主崖岬山脊（峰顶约 467m）</text>
 <text x="211" y="100.7" class="xs b halo end">崖宅 +412~+440m</text>
 <text x="386.9" y="215" class="xs b halo mid">风草甸 ~165m (三座垂直发射井盖)</text>
 <text x="620.2" y="228" class="xs b halo mid">镜湖 (水面 138m, 深 24m)</text>

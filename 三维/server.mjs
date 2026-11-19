@@ -12,8 +12,9 @@ const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 http.createServer(async (req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
   if (p.endsWith('/')) p += 'index.html';
-  const file = normalize(join(root, p));
-  if (!file.startsWith(root)) { res.writeHead(403); return res.end(); }
+  const sketchPage = p === '/岛屿草图.html';
+  const file = sketchPage ? join(root, '..', '岛屿草图.html') : normalize(join(root, p));
+  if (!sketchPage && !file.startsWith(root)) { res.writeHead(403); return res.end(); }
   try {
     const data = await readFile(file);
     res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' });

@@ -1,4 +1,4 @@
-// 生成草图.mjs — 按《岛屿设定.md》3.1 生成四张 SVG 草图、岛屿草图.html 与 三维/data/*
+// 生成草图.mjs — 按《岛屿设定.md》3.2 生成四张 SVG 草图、岛屿草图.html 与 三维/data/*
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -167,8 +167,8 @@ function marchSquares(arr, G, level) {
   return lines;
 }
 
-// ═════════ 1. 岛形与岸线 (3.1 版 31 控制点, 顺时针) ═════════
-// [x, y, 崖高m, 类型] 类型: 'c' 绝壁深潜崖, 'k' 崩积黑岩礁滩, 'r' 峡湾陡岩壁, 'b' 黑曜石砾滩
+// ═════════ 1. 岛形与岸线 (3.2 版 31 控制点, 顺时针) ═════════
+// [x, y, 崖高m, 类型] 类型: 'c' 绝壁深潜崖, 'k' 崩积黑岩礁滩, 'r' 峡湾陡岩壁, 'b' 黑色火山砾滩
 const CTRL = [
   [-1.85,  0.20,  15, 'k'], // 1 西端, 黑岩礁石滩
   [-1.72,  0.72,  90, 'r'], // 2 陡峭岩岸, 其后有小砾滩
@@ -178,11 +178,11 @@ const CTRL = [
   [-0.68,  1.45, 175, 'r'], // 6 西岬尖内侧
   [-0.78,  1.05, 165, 'r'], // 7 西岬内侧陡壁
   [-0.55,  0.72, 135, 'r'], // 8 黑砾湾西壁崖脚
-  [-0.25,  0.45,   4, 'b'], // 9 黑砾湾西段(黑曜石砾滩)
+  [-0.25,  0.45,   4, 'b'], // 9 黑砾湾西段(黑色火山砾滩)
   [ 0.10,  0.42,   3, 'b'], // 10 黑砾湾湾底, 悬瀑入海口
   [ 0.45,  0.55, 135, 'r'], // 11 黑砾湾东壁崖脚
   [ 0.72,  0.85, 240, 'c'], // 12 东岬陡崖 240m
-  [ 1.02,  0.80, 220, 'c'], // 13 东岬尖, 海蚀拱门西座
+  [ 1.02,  0.80, 220, 'c'], // 13 东岬尖
   [ 1.25,  0.45, 260, 'c'], // 14 一线天水道西壁, 260m
   [ 1.38,  0.10, 280, 'c'], // 15 一线天水道中段, 280m
   [ 1.42, -0.10,  14, 'k'], // 16 东礁滩, 崩积礁石平台
@@ -236,8 +236,8 @@ const isletPts = (() => {
   return out;
 })();
 
-// 天然玄武岩海蚀拱门: 横跨一线天水道北口 (东岬南侧 ~(1.21, 0.48) ↔ 东屿北脊 ~(1.56, 0.37)), 拱顶高约 105m
-const SEA_ARCH = { a: [1.22, 0.47], b: [1.55, 0.36], crownZ: 106, clearZ: 68, width: 28 };
+// 天然玄武岩海蚀拱门，跨越水道中段的狭口，拱顶 106 m
+const SEA_ARCH = { a: [1.366, 0.12], b: [1.527, 0.12], crownZ: 106, clearZ: 68, width: 28 };
 
 // 外海海蚀剑峰 (南剑峰 260m, 底宽 <120m) 及附属海蚀黑石柱
 const SWORD_PEAK = { name: '南剑峰', x: 0.15, y: -1.62, r: 0.055, h: 260 };
@@ -267,7 +267,7 @@ const polyArea = pts => {
 };
 const area = polyArea(coastPts) + polyArea(isletPts);
 
-// ═════════ 2. 破火山口盆地、刀刃山脊与尖塔群地形 (3.1 版) ═════════
+// ═════════ 2. 破火山口盆地、刀刃山脊与尖塔群地形 (3.2 版) ═════════
 const lakeLevel = 138;
 const meadowLevel = 165;
 
@@ -277,10 +277,33 @@ const lakePts = blob(LAKE, 19, 64, 0.95);
 const MEADOW = { x: -0.25, y: -0.68, rx: 0.215, ry: 0.122, rot: -0.10 };
 const meadowPts = blob(MEADOW, 31, 56, 0.75);
 
-const FALLS = [0.10, 0.22]; // 火山口北缘崩塌缺口, 帘瀑 ~90m 落差
-const riverPts = [
-  [-0.17, 0.03], [-0.10, 0.07], [-0.03, 0.12], [0.04, 0.17], [0.10, 0.22], [0.10, 0.33], [0.10, 0.42],
+// 白水河中心线。平面单位 km，第三列是同一丰水期水面的海拔 m。
+const riverProfile = [
+  [-0.1584, 0.0212, lakeLevel], [-0.10, 0.07, 136], [-0.03, 0.12, 134],
+  [0.04, 0.17, 132], [0.101, 0.223, 129], [0.101, 0.237, 39],
+  [0.101, 0.251, 39], [0.10, 0.33, 18], [0.10, 0.42, 0],
 ];
+const lipIndex = 4;
+const riverPts = riverProfile.map(([x, y]) => [x, y]);
+const FALLS = riverPts[lipIndex];
+
+function riverbed(x, y, terrain) {
+  if (x < -0.20 || x > 0.14 || y < -0.02 || y > 0.45) return terrain;
+  let distance = Infinity, bed = terrain;
+  for (let i = 1; i < riverProfile.length; i++) {
+    const [ax, ay, az] = riverProfile[i - 1], [bx, by, bz] = riverProfile[i];
+    const dx = bx - ax, dy = by - ay;
+    const t = clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy));
+    const d = Math.hypot(x - ax - t * dx, y - ay - t * dy);
+    if (d >= distance) continue;
+    distance = d;
+    // 垂直水帘前留出崖面退距，潭底比水面低四米。
+    const bedT = i === lipIndex + 1 ? clamp(t + 0.025) : t;
+    const depth = i === lipIndex + 1 || i === lipIndex + 2 ? 4 : 1.4;
+    bed = lerp(az, bz, bedT) - depth;
+  }
+  return lerp(bed, terrain, sstep(0.010, 0.034, distance));
+}
 // 汇入镜湖与风草甸的山涧溪流
 const feederPts = [
   [[-0.86, -0.35], [-0.72, -0.22], [-0.58, -0.10]],
@@ -326,10 +349,15 @@ const SPIRES = [
   [ 0.95,  0.75, 18, 0.080, '东岬',     220],
 ];
 
-const HEADLANDS = [
-  ['主崖岬', -0.22, -1.25, 460],
-  ['西崖角', -1.45, -1.02, 340],
-  ['东南崖角', 0.92, -1.05, 290],
+// 七米地形网格中各山脊的局部峰位（与岸脚控制点分别标注）。
+const summits = [
+  { name: '主崖岬', x: -0.249, y: -1.121, h: 467 },
+  { name: '西尖塔', x: -1.264, y: -0.456, h: 380 },
+  { name: '东尖塔', x: 0.654, y: -0.253, h: 322 },
+  { name: '西崖角', x: -1.348, y: -0.925, h: 352 },
+  { name: '东南崖角', x: 0.829, y: -0.946, h: 302 },
+  { name: '西岬', x: -0.9, y: 1.595, h: 226 },
+  { name: '东岬', x: 0.955, y: 0.706, h: 245 },
 ];
 
 function rimField(x, y) {
@@ -388,13 +416,7 @@ function H(x, y) {
   const lMask = sstep(1.45, 0.96, lDist);
   z = lerp(z, lakeLevel + 0.8, lMask * 0.97);
 
-  // 白水河玄武岩槽 (138m → 帘瀑顶 132m) 与北缘崩塌缺口 -> 黑砾湾峡湾谷底 (0m)
-  const dRiv = distPolyLine(riverPts.slice(0, 5), x, y);
-  const rivMask = sstep(0.11, 0.02, dRiv);
-  const rivProg = clamp((x - (-0.17)) / 0.27);
-  z = lerp(z, lerp(138.2, 130.0, rivProg), rivMask * 0.92);
-
-  // 帘瀑北侧至黑砾湾湾底: 从 (0.10, 0.22) 陡跌近百米至深潭与黑曜石砾滩
+  // 帘瀑北侧至黑砾湾湾底: 从 (0.10, 0.22) 陡跌近百米至深潭与黑色火山砾滩
   const fx = (x - 0.02) / 0.42, fy = (y - 0.50) / 0.34;
   if (y > 0.16 && Math.abs(x - 0.02) < 0.52) {
     const fjord = sstep(1.15, 0.35, Math.hypot(fx, (y - 0.48) / 0.30));
@@ -421,7 +443,7 @@ function H(x, y) {
     }
   }
 
-  return Math.max(1.5, z);
+  return riverbed(x, y, Math.max(1.5, z));
 }
 
 // 扫描全岛最高点
@@ -434,7 +456,7 @@ for (let y = -1.35; y <= 1.70; y += 0.01) {
   }
 }
 
-// ═════════ 3. 基地设施、隧道、礁盘与幻域浮标 (3.1 版) ═════════
+// ═════════ 3. 基地设施、隧道、礁盘与幻域浮标 (3.2 版) ═════════
 // 崖宅岸线锚点: 主崖岬绝壁正南
 const villaCoast = (() => {
   let best = [-0.22, -1.25], bd = Infinity;
@@ -542,7 +564,7 @@ function U(x, y) {
   return d / northShelf;
 }
 
-// ═════════ 4. 主崖岬三段式剖面与深潜崖水下坡面 (3.1 版, 0 → 460m) ═════════
+// ═════════ 4. 主崖岬三段式剖面与深潜崖水下坡面 (3.2 版, 0 → 460m) ═════════
 // s 为从海岸基点向岛内水平距离 (m), z 为海拔 (m)
 // 底层 0~+40m 崩积巨石裙与陡坎; 中层 +40~+250m 约 65° 阶梯玄武岩壁 (80°陡坎 + 8~15m 碎石窄台);
 // 上层 +250~+460m 近乎垂直的柱状节理绝壁 (+410~+445m 平直岩槽嵌崖宅, +445~+460m 刀刃山脊)
@@ -661,7 +683,7 @@ function planSVG() {
   </defs>`);
 
   o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
-  o.push(txt(FX, 28, '岛屿基地 · 平面总图 (3.1 版)', 'title'));
+  o.push(txt(FX, 28, '岛屿基地 · 平面总图 (3.2 版)', 'title'));
   o.push(txt(FX, 46, '半崩塌破火山口巨碗 · 460 米刀刃主峰 · 黑砾湾峡湾 · 一线天水道与东屿 · 外海幻域浮标环', 'sub'));
 
   o.push(`<g clip-path="url(#frame1)">`);
@@ -703,7 +725,7 @@ function planSVG() {
   }
   // 风草甸火山灰台地
   o.push(`<path d="${pathPts(meadowPts.map(P), true)}" fill="${C.meadow}" stroke="#7f8f5e" stroke-width="0.9"/>`);
-  // 黑砾湾黑曜石砾滩
+  // 黑砾湾黑色火山砾滩
   const beachSeg = coast.filter(s => s.kind === 'b').map(s => s.p);
   if (beachSeg.length > 2) {
     const bPoly = [...beachSeg, [0.22, 0.34], [-0.05, 0.34], [-0.32, 0.38]];
@@ -740,13 +762,13 @@ function planSVG() {
 
   // 刀刃山脊脊线与玄武岩尖塔符号
   o.push(`<path d="${pathPts(RIM_SPINE.map(p => P([p[0], p[1]])))}" fill="none" stroke="#2c3036" stroke-width="1.3" stroke-dasharray="5 3" opacity="0.72"/>`);
-  for (const [sx, sy, , , name, hz] of SPIRES) {
+  for (const {x: sx, y: sy, name, h: hz} of summits) {
     const [px, py] = P([sx, sy]);
     o.push(`<polygon points="${r(px)},${r(py - 5.2)} ${r(px - 4.6)},${r(py + 3.6)} ${r(px + 4.6)},${r(py + 3.6)}" fill="#1d2228" stroke="#fff" stroke-width="0.9"/>`);
     if (name) o.push(txt(px + 7, py + 3, `${name} ${hz}m`, 'xs b halo'));
   }
 
-  // 一线天水道北口天然海蚀拱门
+  // 一线天水道狭口天然海蚀拱门
   {
     const [ax, ay] = P(SEA_ARCH.a), [bx, by] = P(SEA_ARCH.b);
     o.push(`<line x1="${r(ax)}" y1="${r(ay)}" x2="${r(bx)}" y2="${r(by)}" stroke="#2d3136" stroke-width="4.5" stroke-linecap="round"/>`);
@@ -809,11 +831,11 @@ function planSVG() {
   o.push(txt(X(LAKE.x), Y(LAKE.y) + 4, `镜湖 ${lakeLevel}m`, 's b whalo mid'));
   o.push(txt(X(MEADOW.x) + 42, Y(MEADOW.y) + 4, `风草甸 ~${meadowLevel}m`, 'xs b halo'));
   o.push(txt(X(FALLS[0]) + 8, Y(FALLS[1]) + 3, '帘瀑 (落差~90m)', 'xs b halo'));
-  o.push(txt(X(0.02), Y(0.56), '黑砾湾 (黑曜石砾滩)', 's b halo mid'));
+  o.push(txt(X(0.02), Y(0.56), '黑砾湾 (黑色火山砾滩)', 's b halo mid'));
   o.push(txt(X(-0.15), Y(1.30), '北暗礁航道', 'xs b dhalo mid'));
   o.push(txt(X(ISLET.x) + 16, Y(ISLET.y), `东屿 ${ISLET.h}m`, 's b halo'));
-  o.push(txt(X(1.37), Y(0.18), '一线天水道', 'xs b halo end'));
-  o.push(txt(X(1.42), Y(0.56), '天然海蚀拱门 (百米高)', 'xs b halo'));
+  o.push(txt(X(1.46), Y(0.24), '一线天水道', 'xs b halo end'));
+  o.push(txt(X(1.45), Y(0.13), '天然海蚀拱门 (百米高)', 'xs b halo'));
   o.push(txt(X(1.22), Y(-0.62), '东峡谷', 'xs b halo'));
   o.push(txt(X(1.50), Y(-0.10), '东礁滩', 'xs halo'));
   o.push(txt(X(-1.95), Y(0.02), '西礁滩', 'xs halo end'));
@@ -866,7 +888,7 @@ function planSVG() {
   return o.join('\n');
 }
 
-// ═════════ 图 2: 南立面图 + 3.1 崖宅竖向轻薄堡垒立面详图 (elevSVG) ═════════
+// ═════════ 图 2: 南立面图 + 3.2 崖宅竖向轻薄堡垒立面详图 (elevSVG) ═════════
 function elevSVG() {
   const W = 960, Hh = 770;
   const o = [];
@@ -902,8 +924,8 @@ function elevSVG() {
   const X1 = x => FX1 + (x - x0) * kx;
   const Z1 = z => FY1 + FH1 - (z - (-110)) * kz;
 
-  o.push(txt(FX1, 26, '岛屿基地 · 南立面图与崖宅定稿立面 (3.1 版)', 'title'));
-  o.push(txt(FX1, 43, '上图: 自南侧外海向北远眺 460 米刀刃绝壁、南剑峰与东屿 (垂直比例 2×) · 下图: +412~+440 米四层轻薄竖向崖壁堡垒 1:1 详图', 'sub'));
+  o.push(txt(FX1, 26, '岛屿基地 · 南立面图与崖宅定稿立面 (3.2 版)', 'title'));
+  o.push(txt(FX1, 43, '上图: 自南侧外海向北远眺 460 米刀刃绝壁、南剑峰与东屿 (垂直比例 2×) · 下图: +412~+440 米贴岩幕墙与观海阳台 1:1 详图', 'sub'));
 
   o.push(`<rect x="${FX1}" y="${FY1}" width="${FW1}" height="${FH1}" fill="url(#skyElev)" stroke="${C.ink}"/>`);
 
@@ -937,9 +959,10 @@ function elevSVG() {
     }
   }
 
-  // 一线天水道裂隙阴影与北口百米海蚀拱门示意
-  o.push(`<rect x="${r(X1(1.40))}" y="${r(Z1(105))}" width="${r((1.52 - 1.40) * kx)}" height="${r(105 * kz)}" fill="#c8d6df" opacity="0.65"/>`);
-  o.push(`<path d="M${r(X1(1.38))},${r(Z1(105))} L${r(X1(1.54))},${r(Z1(105))} L${r(X1(1.54))},${r(Z1(74))} Q${r(X1(1.46))},${r(Z1(92))} ${r(X1(1.38))},${r(Z1(74))} Z" fill="#5e6872" stroke="#2c333a" stroke-width="0.8"/>`);
+  // 一线天水道裂隙阴影与狭口百米海蚀拱门示意
+  const archLeft = X1(SEA_ARCH.a[0]), archRight = X1(SEA_ARCH.b[0]);
+  const archMid = (archLeft + archRight) / 2;
+  o.push(`<path d="M${archLeft},${Z1(0)} Q${archMid},${Z1(2 * SEA_ARCH.crownZ)} ${archRight},${Z1(0)} Q${archMid},${Z1(2 * SEA_ARCH.clearZ)} ${archLeft},${Z1(0)} Z" fill="#5e6872" stroke="#2c333a" stroke-width="0.8"/>`);
 
   // 水面以下深潜崖剖面与洋面
   o.push(`<rect x="${FX1}" y="${r(Z1(0))}" width="${FW1}" height="${r(FY1 + FH1 - Z1(0))}" fill="#89a8bb" opacity="0.82"/>`);
@@ -981,11 +1004,9 @@ function elevSVG() {
   o.push(txt(X1(WEST_GATE.pos[0]) + 6, Z1(-60) + 3, '西闸门 −60m', 'xs whalo'));
 
   // 峰顶高程注记与标尺
-  o.push(txt(X1(-0.22), Z1(466), '主崖岬 460m', 's b halo mid'));
-  o.push(txt(X1(-1.45), Z1(348), '西崖角 340m', 'xs b halo mid'));
-  o.push(txt(X1(-1.25), Z1(374), '西尖塔 365m', 'xs halo mid'));
-  o.push(txt(X1(0.68), Z1(318), '东尖塔 310m', 'xs halo mid'));
-  o.push(txt(X1(0.92), Z1(298), '东南崖角 290m', 'xs b halo mid'));
+  for (const summit of summits.slice(0, 5)) {
+    o.push(txt(X1(summit.x), Z1(summit.h + 8), `${summit.name} ${summit.h}m`, 'xs halo mid'));
+  }
   o.push(txt(X1(ISLET.x), Z1(288), '东屿 280m', 'xs b halo mid'));
   o.push(txt(X1(1.46), Z1(118), '一线天与海蚀拱门', 'xs halo mid'));
   for (const z of [-100, 0, 100, 200, 300, 400, 460]) {
@@ -993,14 +1014,14 @@ function elevSVG() {
     o.push(txt(FX1 - 8, Z1(z) + 3.5, `${z > 0 ? '+' + z : z}m`, 'xs end'));
   }
 
-  // ── 下半幅: 崖宅 3.1 定稿正立面详图 (1:1 等比例, 横向 u ∈ [-46, +46] m, 海拔 z ∈ [400, 460] m) ──
+  // ── 下半幅: 崖宅 3.2 定稿正立面详图 (1:1 等比例, 横向 u ∈ [-46, +46] m, 海拔 z ∈ [400, 460] m) ──
   const FX2 = 58, FY2 = 368, FW2 = 860, FH2 = 364;
   // FH2 = 364 px 对应 Δz = 56 m (404 ~ 460 m) => k2 = 6.5 px/m, 横向显示约 132 m (-66 ~ +66 m)
   const k2 = 6.4, uSpan = FW2 / k2;
   const U2 = u => FX2 + FW2 * 0.5 + u * k2;
   const Z2 = z => FY2 + FH2 - (z - 404) * k2;
 
-  o.push(txt(FX2, FY2 - 9, '崖宅正立面 1:1 详图 — 自崖顶肩部垂降的四层轻薄钛金属装甲鞘与双层钢化玻璃幕墙 (+412 ~ +440 m, 宽 34 m × 高 28 m)', 's b'));
+  o.push(txt(FX2, FY2 - 9, '崖宅正立面 1:1 详图 — 贴岩玻璃幕墙、观海阳台与独立飞行器出口 (+412 ~ +440 m, 宽 34 m × 高 28 m)', 's b'));
   o.push(`<g>`);
   o.push(`<clipPath id="villaElevClip"><rect x="${FX2}" y="${FY2}" width="${FW2}" height="${FH2}"/></clipPath>`);
   o.push(`<g clip-path="url(#villaElevClip)">`);
@@ -1025,31 +1046,9 @@ function elevSVG() {
     }
   }
 
-  // 岩槽阴影凹口 (u ∈ [-17.8, +17.8], z ∈ [411.6, 440.4])
-  o.push(`<rect x="${r(U2(-17.8))}" y="${r(Z2(440.4))}" width="${r(35.6 * k2)}" height="${r(28.8 * k2)}" rx="3" fill="#181c21"/>`);
-
-  // 外圈轻薄冷灰钛金属装甲外鞘 (u ∈ [-17, +17], z ∈ [412, 440], 两侧薄鞘宽仅 1.6m)
-  // 1) 底部轻薄折角收束腹板 (+412.0 ~ +413.2m, 干净锚入绝壁)
-  const belly = [
-    [U2(-17.0), Z2(413.4)], [U2(17.0), Z2(413.4)],
-    [U2(14.2),  Z2(412.0)], [U2(-14.2), Z2(412.0)],
-  ];
-  o.push(`<path d="${pathPts(belly, true)}" fill="url(#tiSheath)" stroke="#1e252b" stroke-width="1.1"/>`);
-
-  // 2) 底部重工实验舱内凹舱口 (z: 413.2 ~ 422.6m, u: -15.4 ~ +15.4)
-  o.push(`<rect x="${r(U2(-15.4))}" y="${r(Z2(422.6))}" width="${r(30.8 * k2)}" height="${r(9.4 * k2)}" fill="#161e26" stroke="#2b3742" stroke-width="1"/>`);
-  // 舱内桥式吊车梁、远古蓝金能量核心与停泊轻型座机剪影
-  o.push(`<rect x="${r(U2(-14.5))}" y="${r(Z2(421.6))}" width="${r(29.0 * k2)}" height="${r(0.9 * k2)}" fill="#4b5864"/>`);
-  o.push(`<circle cx="${r(U2(8.5))}" cy="${r(Z2(416.8))}" r="${r(2.1 * k2)}" fill="#5ec2d6" opacity="0.78"/>`);
-  o.push(`<circle cx="${r(U2(8.5))}" cy="${r(Z2(416.8))}" r="${r(1.0 * k2)}" fill="#e9fbff"/>`);
-  // 停靠座机正视剪影
-  o.push(`<polygon points="${r(U2(-8.5))},${r(Z2(414.3))} ${r(U2(-2.0))},${r(Z2(415.7))} ${r(U2(4.5))},${r(Z2(414.3))} ${r(U2(1.8))},${r(Z2(413.6))} ${r(U2(-5.8))},${r(Z2(413.6))}" fill="#8b99a6" stroke="#1c242b" stroke-width="0.9"/>`);
-
-  // 3) 纤薄悬挑起降甲板 (+413.0m, 向前平直探出, 正立面呈极利落的冷灰金属薄刃与警示灯带)
-  o.push(`<rect x="${r(U2(-13.8))}" y="${r(Z2(413.5))}" width="${r(27.6 * k2)}" height="${r(0.85 * k2)}" rx="1.5" fill="#c3cfd8" stroke="#182028" stroke-width="1.1"/>`);
-  for (let u = -12; u <= 12; u += 4) {
-    o.push(`<rect x="${r(U2(u - 0.35))}" y="${r(Z2(413.25))}" width="${r(0.7 * k2)}" height="${r(0.32 * k2)}" fill="${C.amber}"/>`);
-  }
+  // 下方独立飞行器洞口。窗下留出连续岩带。
+  o.push(`<rect x="${r(U2(0))}" y="${r(Z2(419))}" width="${r(12*k2)}" height="${r(6*k2)}" fill="#172128" stroke="#323d43"/>`);
+  o.push(`<path d="M${r(U2(0.6))},${r(Z2(413.2))} L${r(U2(2))},${r(Z2(414.1))} H${r(U2(10.5))} L${r(U2(11.5))},${r(Z2(413.2))} Z" fill="#52616a"/>`);
 
   // 4) 中央两层大面积防弹钢化玻璃幕墙主厅 (z: 423.0 ~ 435.0m, 每层 6m, 429m 处纤薄楼层腰带)
   o.push(`<rect x="${r(U2(-15.4))}" y="${r(Z2(435.0))}" width="${r(30.8 * k2)}" height="${r(12.0 * k2)}" fill="url(#glassCurtain)" stroke="#1b2630" stroke-width="1.1"/>`);
@@ -1067,23 +1066,10 @@ function elevSVG() {
   o.push(`<polygon points="${r(U2(-13))},${r(Z2(434.8))} ${r(U2(-9.5))},${r(Z2(434.8))} ${r(U2(-13.5))},${r(Z2(423.5))} ${r(U2(-15))},${r(Z2(423.5))}" fill="#ffffff" opacity="0.09"/>`);
   o.push(`<polygon points="${r(U2(4))},${r(Z2(434.8))} ${r(U2(7))},${r(Z2(434.8))} ${r(U2(2.5))},${r(Z2(423.5))} ${r(U2(0.5))},${r(Z2(423.5))}" fill="#ffffff" opacity="0.07"/>`);
 
-  // 5) 左右两侧轻薄冷灰钛金属侧鞘 (厚仅 1.6m, 如刀鞘般利落包裹嵌入岩槽)
-  o.push(`<rect x="${r(U2(-17.0))}" y="${r(Z2(439.6))}" width="${r(1.65 * k2)}" height="${r(26.3 * k2)}" rx="2" fill="url(#tiSheath)" stroke="#1d252c" stroke-width="1.1"/>`);
-  o.push(`<rect x="${r(U2(15.35))}" y="${r(Z2(439.6))}" width="${r(1.65 * k2)}" height="${r(26.3 * k2)}" rx="2" fill="url(#tiSheath)" stroke="#1d252c" stroke-width="1.1"/>`);
-
-  // 6) 顶部装甲冠层 (1层, 435 ~ 440m): 顶缘平切嵌入崖顶肩部 + 狭长观测窗缝
-  const crown = [
-    [U2(-17.0), Z2(439.6)], [U2(-15.5), Z2(440.0)],
-    [U2(15.5),  Z2(440.0)], [U2(17.0),  Z2(439.6)],
-    [U2(17.0),  Z2(435.0)], [U2(-17.0), Z2(435.0)],
-  ];
-  o.push(`<path d="${pathPts(crown, true)}" fill="url(#tiSheath)" stroke="#1b232a" stroke-width="1.2"/>`);
-  // 狭长水平装甲观测窗缝 (z: 436.9 ~ 438.0m)
-  o.push(`<rect x="${r(U2(-12.8))}" y="${r(Z2(438.0))}" width="${r(25.6 * k2)}" height="${r(1.05 * k2)}" rx="1.5" fill="#17242e" stroke="#475663" stroke-width="0.9"/>`);
-  o.push(`<line x1="${r(U2(-12.2))}" y1="${r(Z2(437.45))}" x2="${r(U2(12.2))}" y2="${r(Z2(437.45))}" stroke="${C.amber}" stroke-width="1.4" opacity="0.85"/>`);
-
-  // 比例小人 (1.8m 高, 站立于 +413.5m 起降甲板上)
-  const hx = U2(-11.2), hy = Z2(413.5);
+  // 阳台细边与透明栏板；白色人物提供尺度。
+  o.push(`<rect x="${r(U2(-4))}" y="${r(Z2(424.1))}" width="${r(8*k2)}" height="${r(1.1*k2)}" fill="#acd1da" fill-opacity=".28" stroke="#c4d7da" stroke-width=".8"/>`);
+  o.push(`<rect x="${r(U2(-4))}" y="${r(Z2(423))}" width="${r(8*k2)}" height="${r(.22*k2)}" fill="#b8c2c9"/>`);
+  const hx = U2(-2), hy = Z2(423);
   o.push(`<circle cx="${r(hx)}" cy="${r(hy - 1.62 * k2)}" r="${r(0.22 * k2)}" fill="#fff"/>`);
   o.push(`<line x1="${r(hx)}" y1="${r(hy - 1.38 * k2)}" x2="${r(hx)}" y2="${r(hy)}" stroke="#fff" stroke-width="1.6"/>`);
 
@@ -1095,13 +1081,9 @@ function elevSVG() {
     o.push(txt(U2(u1) + dx, Z2(z1) + 3, s, `s b whalo ${end}`));
     if (subS) o.push(txt(U2(u1) + dx, Z2(z1) + 17, subS, `xs whalo ${end}`));
   };
-  lead2(16.5, 437.6, 25, 441.5, '① 顶部装甲冠层 (435–440 m)', '平切嵌岩顶盖 · 狭长观测窗缝 · 后通火山口盆地');
-  lead2(16.0, 432.0, 25, 432.5, '② 双层钢化玻璃幕墙主厅 (423–435 m)', '每层挑高 6 m · 细钛肋框 · 起居/书房/战术观海厅');
-  lead2(15.4, 418.0, 25, 421.5, '③ 底部重工实验舱 (412–423 m)', '内凹纵深 60 m · 桥式吊车梁 · 远古能量核心');
-  lead2(13.6, 413.3, 25, 412.2, '④ 纤薄悬挑起降甲板 (+413 m)', '底缘折角腹板于 +412 m 干净锚入绝壁');
-
-  lead2(-17.0, 431.0, -25, 435.5, '轻薄冷灰钛金属侧鞘 (宽 34 m)', '剔除笨重厚墙, 如刀鞘般利落嵌于柱状玄武岩槽');
-  lead2(-11.2, 414.4, -25, 418.5, '1.8 m 人物比例参照', '下方 −40~+411 m 四百米绝壁保持纯粹原始风貌');
+  lead2(15, 431, 25, 436, '贴岩双层幕墙', '起居主厅与书房 · +423 至 +435 m');
+  lead2(8, 416, 25, 412, '独立飞行器出口', '座机停在岩内');
+  lead2(-3, 423, -23, 419, '观海阳台', '宽 8 m · 外挑 2 m');
 
   o.push(`</g>`);
   o.push(`<rect x="${FX2}" y="${FY2}" width="${FW2}" height="${FH2}" fill="none" stroke="${C.ink}" stroke-width="1.2"/>`);
@@ -1179,7 +1161,7 @@ function sectionSVG() {
     </linearGradient>
   </defs>`);
   o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
-  o.push(txt(FX, 26, '岛屿基地 · 南北纵剖面图 B–B′ (3.1 版, 沿 x = −0.25 km)', 'title'));
+  o.push(txt(FX, 26, '岛屿基地 · 南北纵剖面图 B–B′ (3.2 版, 沿 x = −0.25 km)', 'title'));
   o.push(txt(FX, 43, '460 米刀刃主崖与深潜崖 · 破火山口碗底(风草甸 165m / 镜湖 138m) · 远古基核壳体 (−670m) 与三层八舱段地下城', 'sub'));
 
   o.push(`<g clip-path="url(#secClip)">`);
@@ -1211,7 +1193,7 @@ function sectionSVG() {
 
   // 1) 崖宅 (+412 ~ +440m, 嵌于主崖顶部南缘, 并带后山通道直通北坡俯瞰盆地)
   const vy = Y0 + 0.098;
-  o.push(`<rect x="${r(Ys(vy - 0.015))}" y="${r(Zs(440))}" width="${r(0.075 * 1000 * ky)}" height="${r(28 * kz)}" fill="${C.amber}" stroke="#141a20" stroke-width="1.1"/>`);
+  o.push(`<rect x="${r(Ys(vy))}" y="${r(Zs(440))}" width="${r(0.060 * 1000 * ky)}" height="${r(28 * kz)}" fill="${C.amber}" stroke="#141a20" stroke-width="1.1"/>`);
   // 后山通道 (+436m 穿通狭窄刀刃山脊至火山口内壁)
   o.push(`<line x1="${r(Ys(vy + 0.05))}" y1="${r(Zs(436))}" x2="${r(Ys(Y0 + 0.20))}" y2="${r(Zs(428))}" stroke="#f5d28c" stroke-width="2.2"/>`);
 
@@ -1263,10 +1245,10 @@ function sectionSVG() {
   o.push(`<path d="M${r(Ys(-0.88))},${r(Zs(-500))} L${r(Ys(Y0 - 0.21))},${r(Zs(-505))}" stroke="#6c95ad" stroke-width="3.4" stroke-dasharray="5 2"/>`);
 
   // 帘瀑北缘崩塌悬崖飞瀑示意 (x=0.10 投影提示)
-  o.push(`<path d="M${r(Ys(0.12))},${r(Zs(138))} L${r(Ys(0.22))},${r(Zs(132))} L${r(Ys(0.25))},${r(Zs(38))} L${r(Ys(0.42))},${r(Zs(2))}" fill="none" stroke="#8ad0e6" stroke-width="1.8" stroke-dasharray="4 3"/>`);
+  o.push(`<path d="${pathPts(riverProfile.map(([, y, z]) => [Ys(y), Zs(z)]))}" fill="none" stroke="#8ad0e6" stroke-width="1.8" stroke-dasharray="4 3"/>`);
 
   // 剖面文字注记
-  o.push(txt(Ys(Y0 + 0.12), Zs(472), '主崖岬刀刃山脊 460m', 's b halo mid'));
+  o.push(txt(Ys(Y0 + 0.12), Zs(472), '主崖岬山脊（峰顶约 467m）', 's b halo mid'));
   o.push(txt(Ys(vy - 0.04), Zs(428), '崖宅 +412~+440m', 'xs b halo end'));
   o.push(txt(Ys(-0.68), Zs(182), `风草甸 ~${meadowLevel}m (三座垂直发射井盖)`, 'xs b halo mid'));
   o.push(txt(Ys((l0 + l1) * 0.5), Zs(154), `镜湖 (水面 ${lakeLevel}m, 深 24m)`, 'xs b halo mid'));
@@ -1345,7 +1327,7 @@ function cliffSVG() {
     </linearGradient>
   </defs>`);
   o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
-  o.push(txt(FX4, 26, '主崖与崖宅 · 1:1 真实比例横剖面 (3.1 版)', 'title'));
+  o.push(txt(FX4, 26, '主崖与崖宅 · 1:1 真实比例横剖面 (3.2 版)', 'title'));
   o.push(txt(FX4, 43, '水平与垂直同比例: 展现 +412~+440 米精悍竖向崖宅悬于 460 米巨崖之巅的真实压迫感, 顶层后廊直穿刀刃山脊俯瞰火山口', 'sub'));
 
   o.push(`<g clip-path="url(#cliffClip)">`);
@@ -1378,21 +1360,19 @@ function cliffSVG() {
   o.push(`<polygon points="${Q(97, 412)} ${Q(157, 412)} ${Q(157, 422.5)} ${Q(98, 422.5)}" fill="${C.chamber}" stroke="#182026" stroke-width="1.1"/>`);
   // 能量核心与吊车梁
   o.push(`<circle cx="${r(Xs(136))}" cy="${r(Zs(416.5))}" r="${r(3.2 * k)}" fill="#57bed4" stroke="#1b2830" stroke-width="0.8"/>`);
-  // 底部轻薄折角装甲腹板收束于 +412m 绝壁 + 纤薄悬挑起降甲板 (+413m, 向南平直探出 20m: s = 77 ~ 98m)
-  o.push(`<polygon points="${Q(77, 413.6)} ${Q(98, 413.6)} ${Q(98, 411.8)} ${Q(92, 412.2)} ${Q(77, 412.7)}" fill="${C.titaniumLight}" stroke="#182026" stroke-width="1.1"/>`);
-  // 甲板上停靠座机侧剖面
-  o.push(`<polygon points="${Q(81, 414.8)} ${Q(88, 416.2)} ${Q(94, 414.8)} ${Q(93, 413.8)} ${Q(82, 413.8)}" fill="#7f8e9b" stroke="#182026" stroke-width="0.8"/>`);
+  // 观海阳台侧剖面，板与玻璃护栏贴接下层主厅。
+  o.push(`<path d="M${Q(96,424.1)} V${r(Zs(423))} H${r(Xs(98))}" fill="none" stroke="#9aabb4" stroke-width="1.3"/>`);
 
   // 中央两层钢化玻璃幕墙主厅 (423~435m, 前方通透幕墙 s = 95.5 ~ 118m + 后方岩内私密起居生活舱 s = 118 ~ 146m)
-  o.push(`<rect x="${r(Xs(95.5))}" y="${r(Zs(435))}" width="${r(22.5 * k)}" height="${r(12 * k)}" fill="#2c4456" stroke="#182026" stroke-width="1"/>`);
+  o.push(`<rect x="${r(Xs(98))}" y="${r(Zs(435))}" width="${r(22.5 * k)}" height="${r(12 * k)}" fill="#2c4456" stroke="#182026" stroke-width="1"/>`);
   o.push(`<rect x="${r(Xs(96.5))}" y="${r(Zs(434.2))}" width="${r(20.5 * k)}" height="${r(10.5 * k)}" fill="${C.amber}" opacity="0.65"/>`);
-  o.push(`<line x1="${r(Xs(95.5))}" y1="${r(Zs(429))}" x2="${r(Xs(146))}" y2="${r(Zs(429))}" stroke="#1c252c" stroke-width="1.2"/>`);
+  o.push(`<line x1="${r(Xs(98))}" y1="${r(Zs(429))}" x2="${r(Xs(146))}" y2="${r(Zs(429))}" stroke="#1c252c" stroke-width="1.2"/>`);
   o.push(`<rect x="${r(Xs(118))}" y="${r(Zs(435))}" width="${r(28 * k)}" height="${r(12 * k)}" fill="${C.chamber}" stroke="#182026" stroke-width="1"/>`);
   // 轻薄钛金属前侧鞘轮廓线
-  o.push(`<line x1="${r(Xs(95.5))}" y1="${r(Zs(440))}" x2="${r(Xs(95.5))}" y2="${r(Zs(423))}" stroke="#cad5de" stroke-width="1.8"/>`);
+  o.push(`<line x1="${r(Xs(98))}" y1="${r(Zs(440))}" x2="${r(Xs(98))}" y2="${r(Zs(423))}" stroke="#cad5de" stroke-width="1.8"/>`);
 
   // 顶部装甲冠层 (435~440m, 平切嵌入崖顶肩部 + 向北穿通狭窄刀刃山脊的后通道 s = 95.5 ~ 149m!)
-  o.push(`<polygon points="${Q(95.2, 440)} ${Q(114, 440)} ${Q(114, 435.2)} ${Q(95.2, 435.2)}" fill="${C.titanium}" stroke="#182026" stroke-width="1.1"/>`);
+  o.push(`<polygon points="${Q(100, 440)} ${Q(114, 440)} ${Q(114, 435.2)} ${Q(100, 435.2)}" fill="${C.titanium}" stroke="#182026" stroke-width="1.1"/>`);
   // 后山廊道直穿北坡观景口 (s = 114 ~ 149m, z = 435.5m)
   o.push(`<polygon points="${Q(114, 438.4)} ${Q(149, 437.2)} ${Q(149, 434.2)} ${Q(114, 435.4)}" fill="#e5dfd3" stroke="#182026" stroke-width="0.9"/>`);
 
@@ -1435,10 +1415,10 @@ function cliffSVG() {
     const dx = cls.includes('end') ? -5 : 5;
     o.push(txt(Xs(s1) + dx, Zs(z1) + 4, label, cls));
   };
-  LB(124, 460, 82, 474, '主崖岬刀刃绝顶 +460 m', 's b halo end');
-  LB(95, 438, 48, 448, '顶部装甲冠层 (435–440 m)', 'xs b halo end');
+  LB(124, 460, 82, 474, '主崖设计剖面 +460 m', 's b halo end');
+  LB(95, 438, 48, 448, '岩内观测层 (435–440 m)', 'xs b halo end');
   LB(95, 429, 44, 430, '双层钢化玻璃幕墙主厅 (423–435 m)', 'xs b halo end');
-  LB(78, 413, 38, 412, '纤薄悬挑起降甲板 +413 m (底缘锚入 +412 m)', 'xs b halo end');
+  LB(96, 423, 38, 414, '主厅观海阳台 +423 m（外挑 2 m）', 'xs b halo end');
   LB(149, 436, 205, 448, '山体后通道: 穿出刀刃山脊直望火山口与镜湖', 'xs b halo');
   LB(155, 417, 210, 416, '底部重工实验舱 (向岩内纵深 60 m)', 'xs b halo');
   LB(143, 305, 195, 305, '垂直联络竖井 (下通机库与内港)', 'xs whalo');
@@ -1482,7 +1462,7 @@ for (const [name, svg] of figs) writeFileSync(join(here, `${name}.svg`), svg, 'u
 
 const html = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>岛屿基地草图 · 3.1 定稿版</title>
+<title>岛屿基地草图 · 3.2 定稿版</title>
 <style>
   body{margin:0;background:#e9eef2;color:#1d2832;font-family:${FONT};line-height:1.65}
   header{background:#141e27;color:#eef4f8;padding:20px 18px;border-bottom:1px solid #2b3c4a}
@@ -1498,15 +1478,15 @@ const html = `<!doctype html>
 </style></head><body>
 <header><div class="wrap">
   <div>
-    <h1>岛屿基地工程草图 · 3.1 定稿版</h1>
-    <p>依据《岛屿设定.md》3.1 同一套几何地形与洞室参数计算生成(平面图 · 南立面与崖宅详图 · 南北纵剖面 · 主崖 1:1 剖面)。</p>
+    <h1>岛屿基地工程草图 · 3.2 定稿版</h1>
+    <p>依据《岛屿设定.md》3.2 同一套几何地形与洞室参数计算生成(平面图 · 南立面与崖宅详图 · 南北纵剖面 · 主崖 1:1 剖面)。</p>
   </div>
   <a class="btn" href="/">进入三维漫游 →</a>
 </div></header>
 <script>try{if(window.parent!==window&&window.frameElement)document.querySelector('header').style.display='none';}catch(e){}</script>
 <main>
-<figure>${figs[0][1]}<figcaption><b>图 1 · 平面总图</b>: 向北开口的马蹄形破火山口主岛(面积约 ${area.toFixed(1)} km²)与裂隙海峡劈出的锯齿状东屿; 北岸为黑曜石砾滩峡湾(黑砾湾)与百米悬瀑, 镜湖(138m)与风草甸(165m)深锁于刀刃山脊巨碗内, 唯一地面营区“岩隙营房”隐于镜湖西侧背风岩壁褶皱。</figcaption></figure>
-<figure>${figs[1][1]}<figcaption><b>图 2 · 南立面图与崖宅 1:1 正立面</b>: 上图展现 460 米主崖岬、外海 260 米南剑峰与一线天海蚀拱门的高耸剪影; 下图为 3.1 定稿崖宅(+412~+440m, 宽 34m × 高 28m): 轻薄冷灰钛金属装甲鞘包裹双层防弹钢化玻璃幕墙主厅、顶部观测冠层、内凹重工实验舱与纤薄起降台。</figcaption></figure>
+<figure>${figs[0][1]}<figcaption><b>图 1 · 平面总图</b>: 向北开口的马蹄形破火山口主岛与东屿(合计约 ${area.toFixed(1)} km²); 北岸为黑色火山砾滩峡湾(黑砾湾)与百米悬瀑, 镜湖(138m)与风草甸(165m)深锁于刀刃山脊巨碗内, 唯一地面营区“岩隙营房”隐于镜湖西侧背风岩壁褶皱。</figcaption></figure>
+<figure>${figs[1][1]}<figcaption><b>图 2 · 南立面图与崖宅 1:1 正立面</b>: 上图展现 460 米主崖岬、外海 260 米南剑峰与一线天海蚀拱门的高耸剪影; 下图为 3.2 定稿崖宅(+412~+440m, 宽 34m × 高 28m): 双层玻璃幕墙与崖面齐平，仅主厅阳台外挑，下方另设内凹飞行器出口。</figcaption></figure>
 <figure>${figs[2][1]}<figcaption><b>图 3 · 南北纵剖面 B–B′</b>: 自南太平洋深潜崖穿过 460 米刀刃主脊、风草甸、镜湖至黑砾湾; 基核整体防护壳体向下延伸至 −670 米, 内部错落排布机库洞厅(+70~+115m)、潜艇内港(−95~+25m)、工坊、聚变堆(−320m)、AI 中枢与三层八舱段末日地下城(−535~−440m)。</figcaption></figure>
 <figure>${figs[3][1]}<figcaption><b>图 4 · 主崖与崖宅 1:1 真实比例剖面</b>: 水平与垂直严格等比例。崖宅自崖顶肩部垂降嵌于上层柱状玄武岩槽, 底缘在 +412 米干净收束锚入绝壁, 下方留有整整四百米纯粹自然绝壁; 顶层后廊直接穿出狭窄刀刃山脊俯瞰火山口与镜湖。</figcaption></figure>
 </main></body></html>`;
@@ -1515,7 +1495,7 @@ writeFileSync(join(root, '岛屿草图.html'), html, 'utf8');
 const f1 = n => n.toFixed(2);
 console.log(`面积 ${area.toFixed(2)} km² | 东西 ${f1(ext[0])}~${f1(ext[1])} km (${f1(ext[1] - ext[0])} km) | 南北 ${f1(ext[2])}~${f1(ext[3])} km (${f1(ext[3] - ext[2])} km)`);
 console.log(`最高点 ${Math.round(peak.h)} m @ (${f1(peak.x)}, ${f1(peak.y)}) | 镜湖水面 ${lakeLevel} m | 风草甸 ${meadowLevel} m`);
-console.log('尖塔与山峰:', SPIRES.map(s => `${s[4]} ${Math.round(H(s[0], s[1]))}m`).join(' | '), `| 东屿 ${ISLET.h}m | 南剑峰 ${SWORD_PEAK.h}m`);
+console.log('尖塔与山峰:', summits.map(s => `${s.name} ${s.h}m`).join(' | '), `| 东屿 ${ISLET.h}m | 南剑峰 ${SWORD_PEAK.h}m`);
 console.log('崖宅岸点', villaCoast.map(f1).join(','), '| 剖面处崖顶', Math.round(sec.crestZ), 'm');
 console.log('弹射隧道:', TUNNELS.map(t => `${t.name}(+${t.z}m) 出口(${f1(t.exit[0])},${f1(t.exit[1])}) 长 ${t.len.toFixed(2)} km`).join(' | '));
 console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_GATE.depth}m 隧道长 ${WEST_GATE.len.toFixed(2)} km`);
@@ -1573,7 +1553,7 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
   const meadM = scanMask(meadowPts.map(toPx3), G.nx, G.ny);
   const isletM = scanMask(isletPts.map(toPx3), G.nx, G.ny);
 
-  // mat 编码: 0 海底, 1 云雾林, 2 火山灰草甸(风草甸), 3 黑曜石砾滩(黑砾湾), 4 玄武岩绝壁/尖塔, 5 镜湖湖底, 6 水下暗礁盘
+  // mat 编码: 0 海底, 1 云雾林, 2 火山灰草甸(风草甸), 3 黑色火山砾滩(黑砾湾), 4 玄武岩绝壁/尖塔, 5 镜湖湖底, 6 水下暗礁盘
   const zf = new Float32Array(N), mat = new Uint8Array(N);
   for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
     const x = G.x0 + i * G.step, y = G.y0 + j * G.step, idx = j * G.nx + i;
@@ -1612,7 +1592,7 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
       if (meadM[idx]) {
         m = 2;
       } else if (sBe(x, y) < 0.055 && z < 12) {
-        // 黑砾湾黑曜石砾滩平缓入水
+        // 黑砾湾黑色火山砾滩平缓入水
         const dB = Math.sqrt(dist2Pts(beachP, x, y)) * 1000;
         z = Math.min(z, 0.4 + dB * 0.14);
         m = 3;
@@ -1643,6 +1623,13 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
       }
       m = 0;
     }
+    if (land[idx] && !lakeM[idx]) {
+      // 岩槛约束湖岸，唯一低口沿白水河贯通。
+      if (Math.abs(x - LAKE.x) < 0.32 && Math.abs(y - LAKE.y) < 0.22 &&
+          dist2Pts(lakePts, x, y) < 0.04 ** 2) z = Math.max(z, lakeLevel + 1.2);
+      z = riverbed(x, y, z);
+      if (x > -0.20 && x < 0.14 && y > -0.02 && y < 0.45 && distPolyLine(riverPts, x, y) < 0.018) m = 4;
+    }
     zf[idx] = z;
     mat[idx] = m;
   }
@@ -1661,11 +1648,11 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
   }
 
   const hm = new Int16Array(N);
-  let zmin = Infinity, zmax = -Infinity;
+  let zmin = Infinity, zmax = -Infinity, summitIndex = 0;
   for (let k = 0; k < N; k++) {
     hm[k] = Math.round(clamp(zf[k], -3200, 3200) * 10);
     if (zf[k] < zmin) zmin = zf[k];
-    if (zf[k] > zmax) zmax = zf[k];
+    if (zf[k] > zmax) { zmax = zf[k]; summitIndex = k; }
   }
   writeFileSync(join(out3, 'height.bin'), Buffer.from(hm.buffer));
   writeFileSync(join(out3, 'mat.bin'), Buffer.from(mat.buffer));
@@ -1696,15 +1683,16 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
   }
 
   const meta = {
-    version: '3.1',
+    version: '3.2',
     grid: G,
     heightScale: 0.1,
     lakeLevel,
     meadowLevel,
-    peak: { x: r4(peak.x), y: r4(peak.y), h: Math.round(peak.h) },
+    peak: { x: r4(G.x0 + summitIndex % G.nx * G.step), y: r4(G.y0 + Math.floor(summitIndex / G.nx) * G.step), h: Math.round(zmax) },
     lake: lakePts.map(P2),
     meadow: meadowPts.map(P2),
     river: riverPts.map(P2),
+    riverProfile, lipIndex,
     falls: FALLS,
     gullies: gullyPts.map(g => g.map(P2)),
     feeders: feederPts.map(g => g.map(P2)),
@@ -1714,12 +1702,13 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
       slotDistM: villaSlotDist,
       zMin: 412,
       zMax: 440,
-      deckZ: 413,
+      balconyZ: 423,
+      craftExitZ: 413,
       widthM: 34,
     },
     seaArch: SEA_ARCH,
     swordPeak: SWORD_PEAK,
-    spires: SPIRES.map(s => ({ name: s[4], p: [s[0], s[1]], h: s[5], r: s[3] })),
+    spires: summits.map(({ name, x, y, h }) => ({ name, p: [x, y], h, r: SPIRES.find(s => s[4] === name)[3] })),
     tunnels: TUNNELS.map(t => ({ name: t.name, p: P2(t.exit), z: t.z, n: seaNormal(t.exit) })),
     mainGate: { p: P2(MAIN_GATE.pos), depth: MAIN_GATE.depth, n: villaN },
     westGate: { p: P2(WEST_GATE.pos), depth: WEST_GATE.depth, n: seaNormal(WEST_GATE.pos) },
@@ -1730,21 +1719,15 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
     sally: SALLY,
     islet: ISLET,
     labels: [
-      ['主崖岬 460m', -0.22, -1.21],
-      ['西崖角 340m', -1.45, -1.02],
-      ['东南崖角 290m', 0.92, -1.05],
-      ['西尖塔 365m', -1.25, -0.42],
-      ['东尖塔 310m', 0.68, -0.25],
+      ...summits.map(({name, x, y, h}) => [`${name} ${h}m`, x, y]),
       ['风草甸 165m', MEADOW.x, MEADOW.y],
       ['镜湖 138m', LAKE.x, LAKE.y],
       ['帘瀑', FALLS[0], FALLS[1]],
       ['黑砾湾', 0.02, 0.50],
       ['岩隙营房', CAMPS[0][0], CAMPS[0][1]],
-      ['西岬', -0.88, 1.62],
-      ['东岬', 1.00, 0.79],
-      ['东屿 280m', ISLET.x, ISLET.y],
-      ['一线天水道', 1.44, 0.12],
-      ['海蚀拱门', 1.38, 0.42],
+      ['东屿主峰 281m', 1.648, 0.125],
+      ['一线天水道', 1.46, 0.24],
+      ['海蚀拱门', (SEA_ARCH.a[0] + SEA_ARCH.b[0]) / 2, SEA_ARCH.a[1]],
       ['南剑峰 260m', SWORD_PEAK.x, SWORD_PEAK.y],
       ['东峡谷', 1.14, -0.52],
       ['西裂谷', -0.82, -0.72],
@@ -1755,5 +1738,5 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
     ],
   };
   writeFileSync(join(out3, 'island.json'), JSON.stringify(meta), 'utf8');
-  console.log(`三维数据 (3.1): ${G.nx}×${G.ny} 网格, 高程 ${zmin.toFixed(0)} ~ ${zmax.toFixed(0)} m, 崖宅槽距 ${villaSlotDist} m → 三维/data/`);
+  console.log(`三维数据 (3.2): ${G.nx}×${G.ny} 网格, 高程 ${zmin.toFixed(0)} ~ ${zmax.toFixed(0)} m, 崖宅槽距 ${villaSlotDist} m → 三维/data/`);
 }

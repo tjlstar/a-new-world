@@ -1,14 +1,13 @@
-// 崖宅 (3.1 定稿版): 自崖顶肩部垂降嵌于 +412~+440 m 绝壁岩槽的四层精悍竖向堡垒
-// 造型: 轻薄冷灰钛金属装甲鞘 + 大面积双层防弹钢化玻璃幕墙 + 内凹 60m 重工实验舱 + 纤薄悬挑起降台 + 穿脊后山廊道
+// 岩内四层崖宅，面海一侧开幕墙和独立舱口。
 
-export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, worldOf }) {
+export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, terrainMesh, texRock, worldOf }) {
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const [coastX, coastZ] = worldOf(meta.villa.p);
   const nx = meta.villa.n[0], nz = -meta.villa.n[1]; // 指向南侧外海 (+w, Three.js +Z 为南)
   const tx = nz, tz = -nx;                           // 沿崖壁横向 (+u 向东, 右手正交基 det = +1)
 
   // 将崖宅基准面 (w = 0) 锚定在主崖岬上层绝壁 +412~+440 m 岩槽立面上
-  const slotDist = (meta.villa.slotDistM || 102) - 6;
+  const slotDist = meta.villa.slotDistM + 2;
   const ox = coastX - nx * slotDist;
   const oz = coastZ - nz * slotDist;
 
@@ -29,10 +28,10 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
 
   // 四层关键标高 (严格对应《岛屿设定.md》第 6 节: +412 ~ +440 m, 高差 28 m, 宽 34 m)
   const Y_ANCHOR = 412.0; // 底缘轻薄折角腹板收束锚固标高
-  const Y_LAB    = 413.0; // 底部重工实验舱地面 & 纤薄悬挑起降甲板面
+  const Y_LAB    = 413.0; // 底部重工实验舱地面与飞行器出口
   const Y_HALL1  = 423.0; // 中央钢化玻璃幕墙主厅 下层 (挑高 6m)
   const Y_HALL2  = 429.0; // 中央钢化玻璃幕墙主厅 上层 (挑高 6m)
-  const Y_CROWN  = 435.4; // 顶部装甲冠层地面 (观测哨 & 通往火山口盆地的山体后通道)
+  const Y_CROWN  = 435.4; // 岩内观测层地面 (观测哨 & 通往火山口盆地的山体后通道)
   const Y_TOP    = 440.0; // 冠层冷灰钛金属顶盖上缘
 
   // 自动探测北侧火山口内壁穿出位置 (沿 w < 0 向北穿过狭窄刀刃山脊, 找到北坡海拔降至 ~434m 处)
@@ -45,23 +44,22 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
       break;
     }
   }
-  const northDeckEndW = northPortalW - 8.5; // 北坡火山口观景小挑台外缘
+  const northDeckEndW = northPortalW; // 北坡岩口
 
   // ── 修饰地形网格: 在南侧 +412~+440m 处削出规整嵌岩槽口, 并在北坡后廊出口削平门洞, 绝不动 411m 以下原始绝壁 ──
   {
     const pos = terrainGeo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const wx = pos.getX(i), wy = pos.getY(i), wz = pos.getZ(i);
-      if (wy < 409) continue;
+      if (wy < 350) continue;
       const [u, w] = toLocal(wx, wz);
-      // 南立面岩槽: 让幕墙与重工舱口前方不被粗糙网格遮挡
-      if (Math.abs(u) < 18.5 && w > -6 && w < 22 && wy >= 411.5 && wy <= 442.5) {
-        const pushBack = -6.5;
-        if (w > pushBack) {
-          const [nxp, , nzp] = toWorld(u, wy, pushBack);
-          pos.setX(i, nxp);
-          pos.setZ(i, nzp);
-        }
+      // 将局部粗网格顺接到近乎垂直的玄武岩面。岩面略向内倾，中心与玻璃齐平。
+      const blend = clamp((30 - Math.abs(u)) / 10, 0, 1) * clamp((22 - Math.abs(w)) / 8, 0, 1);
+      if (blend > 0) {
+        const faceW = 2.4 - (wy - 429) * 0.014;
+        const [x, , z] = toWorld(u, wy, w + blend * (faceW - w));
+        pos.setX(i, x);
+        pos.setZ(i, z);
       }
       // 北侧后山廊道穿出口削坡
       if (Math.abs(u) < 5.5 && w < northPortalW + 6 && w > northDeckEndW - 5 && wy > Y_CROWN - 1.5 && wy < Y_CROWN + 7.5) {
@@ -71,6 +69,26 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
     pos.needsUpdate = true;
     terrainGeo.computeVertexNormals();
   }
+
+  // 在岩面和投影中使用相同的两个开口，保留二者之间的天然岩带。
+  function cutOpenings(shader) {
+    shader.uniforms.villaFrame = { value: new THREE.Vector4(ox, oz, tx, tz) };
+    const vertex = 'varying vec3 vCliff;\nuniform vec4 villaFrame;\n';
+    shader.vertexShader = vertex + shader.vertexShader.replace('#include <begin_vertex>', `
+      #include <begin_vertex>
+      vec2 offset = position.xz - villaFrame.xy;
+      vCliff = vec3(dot(offset, villaFrame.zw), position.y, dot(offset, vec2(-villaFrame.w, villaFrame.z)));
+    `);
+    shader.fragmentShader = 'varying vec3 vCliff;\n' + shader.fragmentShader.replace('#include <clipping_planes_fragment>', `
+      #include <clipping_planes_fragment>
+      bool windowOpening = abs(vCliff.x) < 15.4 && vCliff.y > 422.85 && vCliff.y < 435.08;
+      bool craftOpening = abs(vCliff.x - 6.0) < 6.0 && vCliff.y > 412.95 && vCliff.y < 419.0;
+      if (vCliff.z > -28.0 && vCliff.z < 24.0 && (windowOpening || craftOpening)) discard;
+    `);
+  }
+  terrainMesh.material.onBeforeCompile = cutOpenings;
+  terrainMesh.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  terrainMesh.customDepthMaterial.onBeforeCompile = cutOpenings;
 
   // ── 材质体系: 轻薄冷灰拉丝钛金属、深色防弹钢化玻璃、暖琥珀室内灯带、玄武岩洞壁 ──
   const mTiSheath = new THREE.MeshStandardMaterial({
@@ -134,63 +152,8 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
     return m;
   };
 
-  // ── 0. 两侧柱状玄武岩嵌槽护壁 (无缝弥合地形网格切口, 保持 +412m 以下天然绝壁收口) ──
-  for (const sgn of [-1, 1]) {
-    for (let k = 0; k < 5; k++) {
-      const colH = 32 - k * 1.5;
-      const col = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.2, colH, 6), mRockSlot);
-      col.position.set(sgn * (18.0 + k * 1.4), 426.5 - k * 0.6, 0.8 - k * 2.1);
-      col.rotation.y = k * 0.5;
-      root.add(col);
-    }
-  }
-  // +411.5m 底部岩壁承托基座柱列 (自然过渡至下方 400 米柱状玄武岩绝壁)
-  for (let u = -16; u <= 16; u += 4) {
-    const crag = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.6, 8, 6), mRockSlot);
-    crag.position.set(u, 408.0, -2.6 - (Math.abs(u) % 3) * 0.5);
-    crag.rotation.y = u * 0.3;
-    root.add(crag);
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // 1. 轻薄冷灰钛金属装甲外鞘 (宽 34 m: u ∈ [-17, +17], 高 28 m: y ∈ [412, 440])
-  // ═══════════════════════════════════════════════════════════════
-  // 左右竖向刀鞘式薄侧板 (厚仅 1.5m, 前缘利落倒角)
-  for (const sgn of [-1, 1]) {
-    box(1.5, 27.6, 7.6, sgn * 16.25, 426.0, -1.2, mTiSheath);
-    box(0.45, 27.2, 0.9, sgn * 15.45, 426.0, 2.55, mTiDark);
-  }
-  // 底部 +412m 轻薄折角收束腹板 (干净锚入绝壁, 绝不向下拖尾!)
-  {
-    const bellyGeo = new THREE.BufferGeometry();
-    const u0 = -17.0, u1 = 17.0, zFront = 1.6, zBack = -5.5;
-    const verts = new Float32Array([
-      u0, 413.0, zFront,  u1, 413.0, zFront,  u1, 412.0, zBack,
-      u0, 413.0, zFront,  u1, 412.0, zBack,   u0, 412.0, zBack,
-    ]);
-    bellyGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
-    bellyGeo.computeVertexNormals();
-    const bellyMesh = new THREE.Mesh(bellyGeo, mTiSheath);
-    root.add(bellyMesh);
-    box(34.0, 0.55, 2.2, 0, 412.75, 0.5, mTiDark);
-  }
-
-  // 层间纤薄冷灰钛金属横梁腰线 (423m 主厅托梁、429m 层间细腰线、435m 冠层底梁)
-  box(34.0, 0.75, 5.4, 0, Y_HALL1 - 0.15, 0.1, mTiSheath);
-  box(31.4, 0.52, 1.2, 0, Y_HALL2, 2.15, mTiSheath);
-  box(34.0, 0.65, 5.8, 0, Y_CROWN - 0.2, 0.2, mTiSheath);
-
-  // ═══════════════════════════════════════════════════════════════
-  // 2. 顶部装甲冠层 (435 ~ 440 m) & 穿通刀刃山脊的后山廊道
-  // ═══════════════════════════════════════════════════════════════
-  // 冠层顶盖 (平切嵌入 +440m 崖顶山脊肩部)
-  box(34.2, 0.95, 19.5, 0, Y_TOP - 0.48, -6.8, mTiSheath);
-  // 冠层前立面上下装甲护板, 中留 y = 436.7 ~ 438.0m 狭长观测窗缝
-  box(31.0, 1.35, 0.85, 0, 435.95, 2.35, mTiSheath);
-  box(31.0, 1.55, 1.05, 0, 438.80, 2.40, mTiSheath);
-  // 观测窗缝防弹玻璃与细竖肋
-  box(26.8, 1.25, 0.18, 0, 437.38, 2.25, mGlass);
-  for (const u of [-9, -3, 3, 9]) box(0.22, 1.3, 0.35, u, 437.38, 2.3, mTiDark);
+  // 观测层与屋顶位于岩面之后。
+  box(31, 0.45, 18, 0, Y_TOP - 0.24, -7.6, mWallInner);
   // 冠层地板 (留出楼梯与电梯口)
   box(19.6, 0.45, 18.5, 5.6, Y_CROWN - 0.22, -6.8, mFloorWarm);
   box(9.8, 0.45, 10.5, -10.5, Y_CROWN - 0.22, -2.8, mFloorWarm);
@@ -212,26 +175,25 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
     box(5.4, 0.28, 0.45, 0, Y_CROWN + 3.22, w, mTiDark);
     box(3.2, 0.10, 0.18, 0, Y_CROWN + 3.06, w, mAmber);
   }
-  // 北坡火山口观景拟岩挑台 (穿出山脊后豁然俯瞰 165m 风草甸与 138m 镜湖!)
-  box(9.2, 0.5, 9.0, 0, Y_CROWN - 0.25, northPortalW - 4.0, mTiDeck);
-  box(9.6, 0.8, 1.4, 0, Y_CROWN + 3.6, northPortalW + 0.4, mRockSlot); // 北口拟岩门楣
-  for (const sgn of [-1, 1]) {
-    box(1.2, 4.2, 1.6, sgn * 4.2, Y_CROWN + 1.8, northPortalW + 0.4, mRockSlot);
-    box(0.12, 1.05, 8.4, sgn * 4.45, Y_CROWN + 0.52, northPortalW - 4.0, mTiDark);
-  }
-  box(9.0, 0.12, 0.12, 0, Y_CROWN + 1.02, northDeckEndW + 0.2, mTiDark);
-
+  // 后廊出口收在北坡岩面以内。
   // ═══════════════════════════════════════════════════════════════
   // 3. 中央两层防弹钢化玻璃幕墙主厅 (423 ~ 435 m, 每层 6m)
   // ═══════════════════════════════════════════════════════════════
-  // 正立面与两侧转角大面积通透防弹钢化玻璃幕墙 (w = 2.25)
-  box(30.8, 11.8, 0.18, 0, 429.0, 2.25, mGlass);
-  for (const sgn of [-1, 1]) {
-    box(0.18, 11.8, 4.6, sgn * 15.35, 429.0, -0.05, mGlass);
+  // 两层通高玻璃，下层中央留通向阳台的门洞。
+  for (const sign of [-1, 1]) {
+    box(14.2, 11.8, 0.16, sign * 8.3, 429, 2.25, mGlass);
   }
-  // 纤细竖向钛钢肋框 (mullions)
-  for (const u of [-12.2, -6.1, 0, 6.1, 12.2]) {
-    box(0.24, 12.0, 0.42, u, 429.0, 2.30, mTiSheath);
+  box(2.4, 9.1, 0.16, 0, 430.35, 2.25, mGlass);
+  for (const u of [-15.32, -10, -5, -1.2, 1.2, 5, 10, 15.32])
+    box(0.12, 12, 0.18, u, 429, 2.25, mTiDark);
+  box(30.8, 0.18, 0.2, 0, Y_HALL2, 2.25, mTiDark);
+
+  // 唯一外挑的观海阳台：8 m 宽，幕墙前 2 m。
+  box(8, 0.22, 2.2, 0, Y_HALL1 - 0.11, 3.15, mTiDeck);
+  box(8, 1.08, 0.07, 0, Y_HALL1 + 0.54, 4.21, mGlass);
+  box(8, 0.05, 0.09, 0, Y_HALL1 + 1.08, 4.21, mTiDark);
+  for (const sign of [-1, 1]) {
+    box(0.07, 1.08, 2, sign * 3.96, Y_HALL1 + 0.54, 3.25, mGlass);
   }
 
   // 主厅下层地板 (423m, w ∈ [-28, +2.2], u ∈ [-15.4, +15.4])
@@ -287,7 +249,7 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
   root.add(hallLight2);
 
   // ═══════════════════════════════════════════════════════════════
-  // 4. 底部重工实验舱 (412 ~ 423 m, 纵深 60m) & 纤薄悬挑起降甲板 (+413 m)
+  // 4. 底部重工实验舱 (412 ~ 423 m, 纵深 60m)与岩壁出口
   // ═══════════════════════════════════════════════════════════════
   // 重工实验舱地面 (w ∈ [-60, 0], u ∈ [-15.4, +15.4])
   box(30.8, 0.6, 60.0, 0, Y_LAB - 0.3, -30.0, mFloorLab);
@@ -320,25 +282,10 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
   const coreLight = new THREE.PointLight(0x52d8f5, 3.5, 38, 1.5);
   coreGroup.add(coreLight);
 
-  // 纤薄悬挑起降甲板 (+413.0m, 宽 27.6m: u ∈ [-13.8, +13.8], 向前平直探出 19.5m: w ∈ [0, +19.5])
-  box(27.6, 0.62, 19.5, 0, Y_LAB - 0.31, 9.75, mTiDeck);
-  // 甲板前缘与两侧超薄冷灰钛金属包边 + 嵌入式琥珀助降灯
-  box(28.0, 0.72, 0.55, 0, Y_LAB - 0.28, 19.55, mTiSheath);
-  for (const sgn of [-1, 1]) {
-    box(0.55, 0.72, 19.6, sgn * 13.85, Y_LAB - 0.28, 9.75, mTiSheath);
-    // 低矮防滑安全边坎
-    box(0.22, 0.32, 18.6, sgn * 13.55, Y_LAB + 0.16, 9.5, mTiDark);
-  }
-  for (let u = -12; u <= 12; u += 4) {
-    box(0.65, 0.12, 0.28, u, Y_LAB + 0.05, 19.15, mAmber);
-  }
-  // 起降停机环标线
-  const padRing = new THREE.Mesh(new THREE.RingGeometry(4.8, 5.15, 36), mAmber);
-  padRing.rotation.x = -Math.PI * 0.5;
-  padRing.position.set(2.5, Y_LAB + 0.03, 10.2);
-  root.add(padRing);
-
-  // 轻型流线型座机 (停靠于甲板西侧 / 舱内泊位各一架)
+  // 岩面开口下沿与舱内地面相接，短侧壁和顶衬给舱口以进深。
+  box(12, 0.25, 6.5, 6, Y_LAB - 0.125, -0.75, mFloorLab);
+  box(12, 0.25, 6.5, 6, 419.12, -0.75, mRockSlot);
+  for (const u of [0, 12]) box(0.22, 6, 6.5, u, 416, -0.75, mRockSlot);
   function buildCraft(cx, cy, cz, yaw = 0) {
     const g = new THREE.Group();
     g.position.set(cx, cy, cz);
@@ -370,7 +317,7 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
     }
     root.add(g);
   }
-  buildCraft(2.5, Y_LAB, 10.2, 0.18);      // 起降台待命座机
+  buildCraft(6, Y_LAB, -5.5);             // 私人飞行器停在洞内
   buildCraft(-5.8, Y_LAB, -28.0, Math.PI); // 重工实验舱内整备座机
 
   // ═══════════════════════════════════════════════════════════════
@@ -472,8 +419,9 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
     const inLiftHole = Math.abs(u - LIFT_U) < 1.45 && Math.abs(w - LIFT_W) < 1.45;
     const inStairSlot = Math.abs(u - (-8.2)) < 1.28 && w >= -14.5 && w <= -4.5;
 
-    // 1) 纤薄悬挑起降甲板 (+413m) & 重工实验舱 (-60 ~ 0)
-    if (Math.abs(u) <= 13.7 && w >= -0.2 && w <= 19.5) offer(Y_LAB);
+    // 1) 飞行器出口 (+413m) 与 重工实验舱 (-60 ~ 0)
+    if (u >= 0 && u <= 12 && w >= 0 && w <= 2.6) offer(Y_LAB);
+    if (Math.abs(u) <= 4 && w >= 2 && w <= 4.25) offer(Y_HALL1);
     if (Math.abs(u) <= 15.1 && w >= -59.6 && w <= 0.2) offer(Y_LAB);
 
     // 2) 主厅下层 (+423m)
@@ -487,7 +435,7 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
       offer(Y_HALL2);
     }
 
-    // 4) 顶部装甲冠层 (+435.4m) + 穿山后廊 + 北坡火山口观景挑台
+    // 4) 岩内观测层 (+435.4m) + 穿山后廊 + 北坡火山口观景挑台
     if (!inLiftHole && !inStairSlot && Math.abs(u) <= 15.1 && w >= -16.2 && w <= 2.1) {
       offer(Y_CROWN);
     }
@@ -512,7 +460,13 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
 
     // 主厅与冠层玻璃幕墙内侧限位 (防止穿出 430m 玻璃幕墙坠崖, 起降台除外)
     if (feetY >= Y_HALL1 - 0.6 && feetY < Y_TOP - 0.3) {
-      if (w > 1.85 && w < 3.2 && Math.abs(u) < 15.6) w = 1.85;
+      const onBalconyLevel = Math.abs(feetY - Y_HALL1) < 0.8;
+      if (onBalconyLevel && w > 2.55 && w <= 5.3 && Math.abs(u) <= 4.6) {
+        u = clamp(u, -3.7, 3.7);
+        w = Math.min(w, 3.96);
+      } else if (w > 1.98 && w < 2.85 && Math.abs(u) < 15.6 && !(onBalconyLevel && Math.abs(u) < 1.05)) {
+        w = 1.98;
+      }
       if (feetY < Y_CROWN - 0.5) {
         if (Math.abs(u) > 14.85 && Math.abs(u) < 16.5 && w > -28 && w < 2.2) u = Math.sign(u) * 14.85;
         if (w < -27.5 && w > -29.0 && Math.abs(u) < 15.5) w = -27.5;
@@ -535,14 +489,16 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, wor
     if (feetY < Y_ANCHOR - 1 || feetY > Y_TOP + 4) return null;
     const [u, w] = toLocal(wx, wz);
     if (Math.abs(u) > 18 || w > 21 || w < northDeckEndW - 2) return null;
+    if (w > 2.55 && Math.abs(u) <= 4 && w <= 4.25 && Math.abs(feetY - Y_HALL1) < 0.8) return '崖宅 · 观海阳台';
+    if (w > 2.8) return null;
     if (feetY >= Y_CROWN - 0.8) {
       if (w < northPortalW + 0.5) return '崖宅后廊北口 · 俯瞰镜湖';
       if (w < -16) return '崖宅 · 穿脊后山廊道 (+435m)';
-      return '崖宅 · 顶部装甲冠层 (+436m)';
+      return '崖宅 · 岩内观测层 (+436m)';
     }
     if (feetY >= Y_HALL2 - 0.8) return w < -14 ? '崖宅 · 岩内私密居室 (+429m)' : '崖宅 · 幕墙主厅上层 (+429m)';
     if (feetY >= Y_HALL1 - 0.8) return '崖宅 · 双层钢化幕墙主厅 (+423m)';
-    return w >= 0 ? '崖宅 · 纤薄悬挑起降台 (+413m)' : '崖宅 · 底部重工实验舱 (+413m)';
+    return w >= 0 ? '崖宅 · 飞行器出口 (+413m)' : '崖宅 · 底部重工实验舱 (+413m)';
   }
 
   // 预设传送视角生成辅助: 输入局部 (u, y, w) 与朝向局部目标 (tu, ty, tw)

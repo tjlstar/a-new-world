@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>岛屿基地 3.1 · 破火山口与崖宅三维漫游</title>
-<meta name="description" content="依据《岛屿设定.md》3.1 定稿构建的半崩塌破火山口堡垒岛屿与 +412~+440 米竖向崖壁要塞三维漫游与工程草图。">
-<meta property="og:title" content="岛屿基地 3.1 · 破火山口与崖宅三维漫游">
-<meta property="og:description" content="460 米刀刃主崖、黑砾湾峡湾、一线天海蚀拱门、260 米南剑峰与四层轻薄钛金属幕墙崖宅三维交互漫游。">
+<title>岛屿基地 3.2 · 破火山口与崖宅三维漫游</title>
+<meta name="description" content="依据《岛屿设定.md》3.2 定稿构建的半崩塌破火山口堡垒岛屿与 +412~+440 米竖向崖壁要塞三维漫游与工程草图。">
+<meta property="og:title" content="岛屿基地 3.2 · 破火山口与崖宅三维漫游">
+<meta property="og:description" content="460 米刀刃主崖、黑砾湾峡湾、一线天海蚀拱门、260 米南剑峰与贴岩玻璃幕墙崖宅三维交互漫游。">
 <style>
   :root {
     --ink: #ecf2f6;
@@ -109,7 +109,7 @@
   #open-sketch-start:hover { background: rgba(255, 255, 255, 0.08); }
   #status { font-size: 12.5px; color: var(--dim); }
 
-  /* 页内 3.1 工程草图抽屉模态窗 (避免跳出 iframe) */
+  /* 页内 3.2 工程草图抽屉模态窗 (避免跳出 iframe) */
   #sketch-modal {
     position: fixed; inset: 18px; z-index: 20; display: flex; flex-direction: column;
     background: #141e27; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
@@ -140,7 +140,7 @@
 <div id="cross"></div>
 
 <div id="hud" class="panel">
-  <div class="ver">《岛屿设定.md》3.1 定稿</div>
+  <div class="ver">《岛屿设定.md》3.2 定稿</div>
   <div class="row"><span>坐标</span><b id="h-pos">—</b></div>
   <div class="row"><span>海拔</span><b id="h-alt">—</b></div>
   <div class="row"><span>朝向</span><b id="h-dir">—</b></div>
@@ -149,48 +149,48 @@
 </div>
 
 <div id="toolbar">
-  <button id="btn-sketch" class="tbtn accent" title="查看四张 3.1 版工程剖面与平面草图 (快捷键 G)">工程草图 (G)</button>
+  <button id="btn-sketch" class="tbtn accent" title="查看四张 3.2 版工程剖面与平面草图 (快捷键 G)">工程草图 (G)</button>
   <button id="btn-hud" class="tbtn" title="隐藏或显示界面面板 (快捷键 U)">精简界面 (U)</button>
 </div>
 
 <div id="help" class="panel">
   <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · 鼠标转向 · <kbd>Shift</kbd> 加速 · <kbd>空格</kbd> 跳/升 · <kbd>C</kbd> 降<br>
   <kbd>F</kbd> 步行/飞行 · <kbd>1</kbd>–<kbd>0</kbd> 传送 · <kbd>E</kbd>/<kbd>Q</kbd> 崖宅四层电梯(门口按<kbd>E</kbd>呼叫)<br>
-  <kbd>G</kbd> 3.1 工程草图 · <kbd>L</kbd> 地标 · <kbd>H</kbd> 幻域光幕 · <kbd>M</kbd> 地图 · <kbd>U</kbd> 界面
+  <kbd>G</kbd> 3.2 工程草图 · <kbd>L</kbd> 地标 · <kbd>H</kbd> 幻域光幕 · <kbd>M</kbd> 地图 · <kbd>U</kbd> 界面
 </div>
 
 <div id="spots" class="panel">
-  <div class="hd"><span>3.1 地标传送</span><span>快捷键 / 点击</span></div>
+  <div class="hd"><span>3.2 地标传送</span><span>快捷键 / 点击</span></div>
 </div>
 <div id="map" class="panel"><canvas id="mini" width="240" height="214"></canvas></div>
 <div id="toast" class="panel"></div>
 
 <div id="sketch-modal" class="hidden">
   <div class="bar">
-    <b>岛屿基地工程草图 · 3.1 定稿版 (平面图 / 南立面与崖宅 1:1 详图 / 南北纵剖面 / 主崖 1:1 剖面)</b>
+    <b>岛屿基地工程草图 · 3.2 定稿版 (平面图 / 南立面与崖宅 1:1 详图 / 南北纵剖面 / 主崖 1:1 剖面)</b>
     <button id="close-sketch">关闭草图 (Esc / G)</button>
   </div>
-  <iframe id="sketch-frame" title="岛屿基地 3.1 工程草图"></iframe>
+  <iframe id="sketch-frame" title="岛屿基地 3.2 工程草图"></iframe>
 </div>
 
 <div id="start">
   <div class="box panel">
-    <div class="badge">版本 3.1 · 破火山口巨碗 &amp; 竖向轻薄崖宅定稿</div>
+    <div class="badge">版本 3.2 · 破火山口巨碗 &amp; 贴岩幕墙崖宅</div>
     <h1>岛屿基地 · 三维漫游</h1>
     <p class="lead">
-      依据《岛屿设定.md》3.1 生成：460 米刀刃主崖与黑色玄武岩尖塔群合围破火山口巨碗（风草甸 165m、镜湖 138m、百米帘瀑注入黑砾湾）；东侧一线天水道横跨百米海蚀拱门，南洋拔起 260 米南剑峰；崖宅以四层轻薄冷灰钛金属鞘与双层幕墙垂降嵌于 +412~+440 米绝壁，顶层后廊直穿山脊俯瞰镜湖。
+      主崖岬峰顶海拔 467 米，崖宅嵌在南侧绝壁上。漫游展示丰水期：镜湖的湖水沿白水河流过约 330 米，从帘瀑跌落 90 米，再经潭下短峡流入黑砾湾。
     </p>
     <table>
       <tr><td>W A S D / 方向键</td><td>前后左右移动；按住 Shift 奔跑或高速巡航</td></tr>
       <tr><td>鼠标视角</td><td>点击画面锁定鼠标自由环视（Esc 释放；未锁定时可按住左键拖拽转向）</td></tr>
       <tr><td>F · 空格 / C</td><td>切换【步行 / 自由飞行】；步行时空格跳跃，飞行时空格上升、C 下降</td></tr>
-      <tr><td>1 – 0 及右侧列表</td><td>一键传送至崖宅起降台、双层幕墙主厅、穿脊后廊、海蚀拱门、南剑峰等十四处地标</td></tr>
+      <tr><td>1 – 0 及右侧列表</td><td>一键传送至观海阳台、双层幕墙主厅、穿脊后廊、海蚀拱门、南剑峰等十四处地标</td></tr>
       <tr><td>E / Q</td><td>崖宅四层电梯：轿厢内按 E 上楼 / Q 下楼，井道旁按 E 呼叫电梯（亦可直接走步梯）</td></tr>
-      <tr><td>G / L / H / M / U</td><td>G 查看四张 3.1 工程草图 · L 地名标签 · H 幻域边界 · M 小地图 · U 隐藏面板</td></tr>
+      <tr><td>G / L / H / M / U</td><td>G 查看四张 3.2 工程草图 · L 地名标签 · H 幻域边界 · M 小地图 · U 隐藏面板</td></tr>
     </table>
     <div class="start-actions">
-      <button id="go" disabled>正在载入 3.1 地形…</button>
-      <button id="open-sketch-start">查看 3.1 工程草图</button>
+      <button id="go" disabled>正在载入 3.2 地形…</button>
+      <button id="open-sketch-start">查看 3.2 工程草图</button>
       <span id="status"></span>
     </div>
   </div>

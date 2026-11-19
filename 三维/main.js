@@ -1,4 +1,4 @@
-// 岛屿基地 3.1 · 三维漫游 — 地形与地物数据由 草图/生成草图.mjs 同步导出至 data/
+// 岛屿基地 3.2 · 三维漫游 — 地形与地物数据由 草图/生成草图.mjs 同步导出至 data/
 import * as THREE from './vendor/three.module.min.js';
 import { buildVilla } from './villa.js';
 
@@ -36,7 +36,7 @@ const pip = (poly, x, y) => {
 const status = s => { const el = $('status'); if (el) el.textContent = s; };
 const nextFrame = () => new Promise(r => { requestAnimationFrame(() => r()); setTimeout(r, 80); });
 
-// ── 3.1 工程草图页内模态窗绑定 (随时可查看, 不离开当前页面) ──
+// ── 3.2 工程草图页内模态窗绑定 (随时可查看, 不离开当前页面) ──
 let sketchOpen = false;
 function toggleSketch(force) {
   const modal = $('sketch-modal');
@@ -64,8 +64,8 @@ function toggleHud() {
 }
 $('btn-hud').addEventListener('click', toggleHud);
 
-// ═════════ 1. 读取 3.1 地形与地物数据 ═════════
-status('读取 3.1 破火山口高度场…');
+// ═════════ 1. 读取 3.2 地形与地物数据 ═════════
+status('读取 3.2 破火山口高度场…');
 const [meta, hbuf, mbuf] = await Promise.all([
   fetch('data/island.json').then(r => r.json()),
   fetch('data/height.bin').then(r => r.arrayBuffer()),
@@ -114,59 +114,63 @@ renderer.shadowMap.enabled = !isSoftwareGl;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x8ba2b2, 0.000145);
+scene.fog = new THREE.FogExp2(0xc8d9e2, 0.00015);
 
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.4, 18000);
 camera.rotation.order = 'YXZ';
 
-// 生成程序化海空环境贴图 (PMREM), 确保钛金属外鞘与防弹玻璃幕墙反射真实通透
-{
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envScene = new THREE.Scene();
-  const domeGeo = new THREE.SphereGeometry(80, 32, 20);
-  const domePos = domeGeo.attributes.position;
-  const domeCol = new Float32Array(domePos.count * 3);
-  for (let i = 0; i < domePos.count; i++) {
-    const y = domePos.getY(i) / 80;
-    const c = y >= 0
-      ? mix3([0.62, 0.73, 0.81], [0.18, 0.34, 0.54], Math.pow(y, 0.65))
-      : mix3([0.48, 0.56, 0.62], [0.08, 0.13, 0.18], Math.pow(-y, 0.5));
-    domeCol[i * 3] = c[0]; domeCol[i * 3 + 1] = c[1]; domeCol[i * 3 + 2] = c[2];
-  }
-  domeGeo.setAttribute('color', new THREE.BufferAttribute(domeCol, 3));
-  envScene.add(new THREE.Mesh(domeGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
-  const sunDisc = new THREE.Mesh(
-    new THREE.SphereGeometry(5.5, 16, 12),
-    new THREE.MeshBasicMaterial({ color: 0xfff0d4 }),
-  );
-  sunDisc.position.set(42, 34, 36);
-  envScene.add(sunDisc);
-  scene.environment = pmrem.fromScene(envScene, 0.04).texture;
-  scene.environmentIntensity = 0.72;
-  pmrem.dispose();
-  domeGeo.dispose();
-}
+// 太阳、环境反射与直射光共用一个东南方向。天穹随相机平移，太阳只有角位置。
+const sunlight = new THREE.Vector3(0.55, 0.44, 0.86).normalize();
+const skyGeometry = new THREE.SphereGeometry(1, 48, 24);
+const skyMaterial = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false,
+  uniforms: { sunDirection: { value: sunlight } },
+  vertexShader: `
+    varying vec3 skyRay;
+    void main() {
+      skyRay = position;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 sunDirection;
+    varying vec3 skyRay;
+    void main() {
+      vec3 ray = normalize(skyRay);
+      float altitude = max(ray.y, 0.0);
+      vec3 horizon = vec3(0.68, 0.84, 0.95);
+      vec3 sky = mix(horizon, vec3(0.085, 0.27, 0.58), pow(altitude, 0.42));
+      // 环境贴图的下半球采用海面的暗色反射。
+      sky = mix(sky, vec3(0.045, 0.105, 0.14), smoothstep(0.0, 0.18, -ray.y));
+      float chord = length(ray - sunDirection);
+      float edge = max(fwidth(chord) * 0.6, 0.0003);
+      float disc = 1.0 - smoothstep(0.0047 - edge, 0.0047 + edge, chord);
+      float haze = exp(-8.0 * chord) * 0.35 + exp(-62.0 * chord) * 0.95;
+      sky += vec3(1.0, 0.83, 0.61) * (haze + disc * 14.0);
+      gl_FragColor = vec4(sky, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }
+  `,
+});
+const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+sky.scale.setScalar(14000);
+sky.renderOrder = -1000;
+sky.frustumCulled = false;
+scene.add(sky);
 
-// 天空穹顶与太阳光照 (东南偏南低仰角海空日光, 凸显柱状玄武岩棱角)
-{
-  const skyGeo = new THREE.SphereGeometry(14500, 36, 24);
-  const sp = skyGeo.attributes.position, sc = new Float32Array(sp.count * 3);
-  for (let i = 0; i < sp.count; i++) {
-    const t = clamp(sp.getY(i) / 14500, -0.2, 1);
-    const c = t >= 0
-      ? mix3([0.58, 0.69, 0.77], [0.17, 0.31, 0.48], Math.pow(t, 0.58))
-      : mix3([0.58, 0.69, 0.77], [0.32, 0.40, 0.47], clamp(-t * 4));
-    sc[i * 3] = lin(c[0]); sc[i * 3 + 1] = lin(c[1]); sc[i * 3 + 2] = lin(c[2]);
-  }
-  skyGeo.setAttribute('color', new THREE.BufferAttribute(sc, 3));
-  scene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false })));
-}
+const environmentScene = new THREE.Scene();
+const environmentSky = new THREE.Mesh(skyGeometry, skyMaterial);
+environmentSky.scale.setScalar(80);
+environmentScene.add(environmentSky);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(environmentScene, 0, 0.1, 100).texture;
+scene.environmentIntensity = 0.8;
+pmrem.dispose();
 
-const hemi = new THREE.HemisphereLight(0xb8d4ea, 0x2a333b, 0.68);
-scene.add(hemi);
-
-const sun = new THREE.DirectionalLight(0xfff1dc, 1.95);
-sun.position.set(1650, 1850, 1450); // 东南洋面阳光直射南崖与崖宅幕墙
+scene.add(new THREE.HemisphereLight(0xc9e2ff, 0x716550, 0.85));
+const sun = new THREE.DirectionalLight(0xffedcf, 3.1);
+sun.position.copy(sunlight).multiplyScalar(3200);
 if (!isSoftwareGl) {
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -184,7 +188,7 @@ function makeRockTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#7e838a';
+  ctx.fillStyle = '#c8cbd0';
   ctx.fillRect(0, 0, 256, 256);
   const R = rng(46031);
   // 纵向柱状节理暗缝
@@ -205,7 +209,7 @@ function makeRockTexture() {
 }
 const texRock = makeRockTexture();
 
-// ═════════ 3. 构建 3.1 破火山口与深潜崖三维地形网格 ═════════
+// ═════════ 3. 构建 3.2 破火山口与深潜崖三维地形网格 ═════════
 await nextFrame();
 status('构建 460 米玄武岩绝壁与破火山口网格…');
 
@@ -255,7 +259,7 @@ const terrainGeo = new THREE.BufferGeometry();
         // 镜湖幽深墨玉湖床
         rgb = mix3([0.08, 0.17, 0.20], [0.14, 0.24, 0.26], n1);
       } else if (m === 3) {
-        // 黑砾湾: 黑曜石砾石与潮湿火山粗砂滩 (绝非白沙滩!)
+        // 黑砾湾: 黑色火山砾石与潮湿火山粗砂滩 (绝非白沙滩!)
         rgb = mix3([0.13, 0.15, 0.17], [0.21, 0.23, 0.26], n2);
       } else if (m === 2 && sl < 0.75) {
         // 风草甸: 火山灰耐风草甸 (~165m)
@@ -310,8 +314,8 @@ scene.add(terrainMesh);
 
 // ═════════ 4. 建造 +412~+440m 四层轻薄崖宅 (含地形槽口精修) ═════════
 await nextFrame();
-status('嵌入 +412~+440 米四层轻薄钛金属崖宅…');
-const villa = buildVilla({ THREE, scene, meta, G, hm, terrainGeo, texRock, worldOf, mapOf });
+status('嵌入 +412~+440 米岩内主厅与贴崖幕墙…');
+const villa = buildVilla({ THREE, scene, meta, G, hm, terrainGeo, terrainMesh, texRock, worldOf, mapOf });
 // 同步被崖宅精修后的顶点回高度缓存
 {
   const p = terrainGeo.attributes.position;
@@ -332,6 +336,27 @@ const oceanMat = new THREE.MeshPhysicalMaterial({
   opacity: 0.88,
   reflectivity: 0.85,
 });
+// 周期波纹法线让掠过海面的阳光断成细碎高光，远处由 mipmap 平滑过渡。
+const waveSize = 128;
+const wavePixels = new Uint8Array(waveSize * waveSize * 4);
+for (let y = 0; y < waveSize; y++) {
+  for (let x = 0; x < waveSize; x++) {
+    const u = 2 * Math.PI * x / waveSize, v = 2 * Math.PI * y / waveSize;
+    const swell = Math.cos(2 * u + 5 * v + Math.sin(u - v));
+    const ripple = Math.cos(7 * u - 3 * v + 1.5 * Math.sin(2 * v));
+    const n = new THREE.Vector3(0.09 * swell + 0.12 * ripple, 0.20 * swell - 0.05 * ripple, 1).normalize();
+    const i = 4 * (y * waveSize + x);
+    wavePixels.set([127.5 * (1 + n.x), 127.5 * (1 + n.y), 127.5 * (1 + n.z), 255], i);
+  }
+}
+const waveMap = new THREE.DataTexture(wavePixels, waveSize, waveSize);
+waveMap.wrapS = waveMap.wrapT = THREE.RepeatWrapping;
+waveMap.repeat.set(740, 740);
+waveMap.generateMipmaps = true;
+waveMap.minFilter = THREE.LinearMipmapLinearFilter;
+waveMap.magFilter = THREE.LinearFilter;
+waveMap.needsUpdate = true;
+oceanMat.normalMap = waveMap;
 const ocean = new THREE.Mesh(new THREE.PlaneGeometry(24000, 24000, 96, 96), oceanMat);
 ocean.rotation.x = -Math.PI * 0.5;
 ocean.receiveShadow = true;
@@ -363,38 +388,39 @@ scene.add(waterfallGroup);
 const mistSprites = [];
 {
   const mStream = new THREE.MeshStandardMaterial({
-    color: 0x9be2f2, emissive: 0x26657a, emissiveIntensity: 0.35,
+    color: 0xffffff, vertexColors: true,
     roughness: 0.18, transparent: true, opacity: 0.84,
   });
-  // 湖口至帘瀑顶河道水带
-  for (let i = 0; i < meta.river.length - 2; i++) {
-    const [x0, z0] = worldOf(meta.river[i]);
-    const [x1, z1] = worldOf(meta.river[i + 1]);
-    const len = Math.hypot(x1 - x0, z1 - z0);
-    const mx = (x0 + x1) * 0.5, mz = (z0 + z1) * 0.5;
-    const y0 = Math.max(heightAt(x0, z0), 130) + 0.45;
-    const y1 = Math.max(heightAt(x1, z1), 128) + 0.45;
-    const seg = new THREE.Mesh(new THREE.BoxGeometry(9.5, 0.4, len + 3), mStream);
-    seg.position.set(mx, (y0 + y1) * 0.5, mz);
-    seg.rotation.y = Math.atan2(x1 - x0, z1 - z0);
-    seg.rotation.x = -Math.atan2(y1 - y0, len);
-    waterfallGroup.add(seg);
+  // 湖口、瀑唇、潭面和潮口共享剖面。左右岸顶点在弯道处共用，水带连续。
+  const profile = meta.riverProfile;
+  const lip = meta.lipIndex;
+  const verts = [], colors = [], indices = [];
+  for (let i = 0; i < profile.length; i++) {
+    const [x, z] = worldOf(profile[i]);
+    const prev = worldOf(profile[Math.max(0, i - 1)]);
+    const next = worldOf(profile[Math.min(profile.length - 1, i + 1)]);
+    const dx = next[0] - prev[0], dz = next[1] - prev[1];
+    const halfWidth = i === lip + 1 || i === lip + 2 ? 6 : i === lip ? 1.2 : 1.8;
+    const tint = new THREE.Color(i === lip || i === lip + 1 ? 0xcae3e6 : 0x3d777c);
+    colors.push(tint.r, tint.g, tint.b, tint.r, tint.g, tint.b);
+    const scale = halfWidth / Math.hypot(dx, dz);
+    for (const side of [-1, 1]) verts.push(x - side * dz * scale, profile[i][2] + 0.04, z + side * dx * scale);
+    if (i > 0) {
+      const n = i * 2;
+      indices.push(n - 2, n - 1, n, n - 1, n + 1, n);
+    }
   }
+  const streamGeo = new THREE.BufferGeometry();
+  streamGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  streamGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  streamGeo.setIndex(indices);
+  streamGeo.computeVertexNormals();
+  mStream.side = THREE.DoubleSide;
+  waterfallGroup.add(new THREE.Mesh(streamGeo, mStream));
+  const [fx, fz] = worldOf(profile[lip]);
+  const poolY = profile[lip + 1][2];
+  const [, poolZ] = worldOf(profile[lip + 1]);
 
-  // 帘瀑主体: 位于 meta.falls (0.10, 0.22), 自北缘缺口 ~128m 飞泻而下约 92m 落入深潭 (~34m -> 入海)
-  const [fx, fz] = worldOf(meta.falls);
-  const topY = Math.max(118, heightAt(fx, fz + 18));
-  const poolZ = fz - 42;
-  const poolY = Math.max(4, heightAt(fx, poolZ));
-  const dropH = topY - poolY;
-
-  // 两侧夹峙玄武岩瀑口峭壁柱, 托住水帘并遮蔽后方暗门
-  const mCliffDark = new THREE.MeshStandardMaterial({ color: 0x262a30, map: texRock, roughness: 0.92 });
-  for (const sgn of [-1, 1]) {
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(8, 12, dropH + 14, 7), mCliffDark);
-    pillar.position.set(fx + sgn * 14, poolY + dropH * 0.5, fz - 14);
-    waterfallGroup.add(pillar);
-  }
   // 水帘背后的基地守军秘密暗门
   const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(6.4, 5.2, 2.4), new THREE.MeshStandardMaterial({ color: 0x3b4650, metalness: 0.7, roughness: 0.4 }));
   doorFrame.position.set(fx, poolY + 14, fz - 9);
@@ -403,37 +429,26 @@ const mistSprites = [];
   doorSlit.position.set(fx, poolY + 16.1, fz - 9);
   waterfallGroup.add(doorSlit);
 
-  // 垂落水帘与白色飞沫柱
-  const curtainGeo = new THREE.CylinderGeometry(6.8, 10.5, dropH, 16, 1, true, -Math.PI * 0.42, Math.PI * 0.84);
-  const curtainMat = new THREE.MeshStandardMaterial({
-    color: 0xdff6ff, emissive: 0x4b8ca3, emissiveIntensity: 0.42,
-    roughness: 0.2, transparent: true, opacity: 0.82, side: THREE.DoubleSide,
-  });
-  const curtain = new THREE.Mesh(curtainGeo, curtainMat);
-  curtain.position.set(fx, poolY + dropH * 0.5, fz - 21);
-  curtain.rotation.x = -0.18;
-  waterfallGroup.add(curtain);
-
   // 深潭白沫环与升腾水雾团
   const poolFoam = new THREE.Mesh(
-    new THREE.CircleGeometry(19, 28),
+    new THREE.CircleGeometry(4.3, 28),
     new THREE.MeshBasicMaterial({ color: 0xd8f1fa, transparent: true, opacity: 0.62 }),
   );
   poolFoam.rotation.x = -Math.PI * 0.5;
-  poolFoam.position.set(fx, poolY + 0.55, poolZ + 8);
+  poolFoam.position.set(fx, poolY + 0.55, poolZ - 1.5);
   waterfallGroup.add(poolFoam);
 
   const mistMat = new THREE.MeshBasicMaterial({ color: 0xdbeaf0, transparent: true, opacity: 0.26, depthWrite: false });
   for (let i = 0; i < 9; i++) {
-    const sp = new THREE.Mesh(new THREE.IcosahedronGeometry(7 + (i % 3) * 3.5, 1), mistMat);
-    sp.position.set(fx + (i - 4) * 3.8, poolY + 5 + (i % 4) * 4.5, poolZ + 6 + (i % 3) * 4);
+    const sp = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5 + (i % 3) * 0.7, 1), mistMat);
+    sp.position.set(fx + (i - 4) * 0.85, poolY + 1.4 + (i % 4) * 0.7, poolZ - 1 + (i % 3) * 0.8);
     sp.userData = { baseY: sp.position.y, phase: i * 0.8 };
     waterfallGroup.add(sp);
     mistSprites.push(sp);
   }
 }
 
-// ═════════ 6. 3.1 标志性奇崛地质与隐蔽工程地物 ═════════
+// ═════════ 6. 3.2 标志性奇崛地质与隐蔽工程地物 ═════════
 await nextFrame();
 status('耸立 260 米南剑峰、百米天然海蚀拱门与玄武岩尖塔群…');
 
@@ -447,7 +462,7 @@ const mFoam = new THREE.MeshBasicMaterial({
   color: 0xe2f2f8, transparent: true, opacity: 0.52, side: THREE.DoubleSide, depthWrite: false,
 });
 
-// 6.1 天然玄武岩海蚀拱门: 横跨一线天水道北口 (拱顶 ~106m, 净空 ~68m, 小艇与飞行器可从门下穿行!)
+// 6.1 天然玄武岩海蚀拱门: 横跨一线天水道中段狭口 (拱顶 ~106m, 净空 ~68m, 小艇与飞行器可从门下穿行!)
 const foamRings = [];
 if (meta.seaArch) {
   const [ax, az] = worldOf(meta.seaArch.a);
@@ -461,46 +476,42 @@ if (meta.seaArch) {
   archGroup.rotation.y = yaw;
   scene.add(archGroup);
 
-  const R = rng(10668);
-  const segs = 26;
-  const halfSpan = span * 0.52;
-  const crownY = meta.seaArch.crownZ || 106;
-  const clearY = meta.seaArch.clearZ || 68;
-
-  // 两侧深深扎入海底与崖壁的巨型玄武岩桥台柱群
-  for (const sgn of [-1, 1]) {
-    for (let k = 0; k < 7; k++) {
-      const rCol = 9 + R() * 5;
-      const hCol = crownY + 26 - k * 8;
-      const col = new THREE.Mesh(new THREE.CylinderGeometry(rCol * 0.78, rCol * 1.15, hCol + 35, 6), mBasalt);
-      col.position.set((R() - 0.5) * 18, hCol * 0.5 - 15, sgn * (halfSpan - 8 + (R() - 0.5) * 16));
-      col.rotation.y = R() * Math.PI;
-      col.castShadow = !isSoftwareGl;
-      col.receiveShadow = true;
-      archGroup.add(col);
-    }
+  // 沿两处实测岩肩放样连续岩拱。中央截面上下边缘分别取拱顶和通航净空的标高。
+  const { crownZ, clearZ, width } = meta.seaArch;
+  const positions = [], uvs = [], faces = [];
+  const sections = 32, sides = 8;
+  for (let i = 0; i <= sections; i++) {
+    const t = i * 2 / sections - 1;
+    const spanPosition = t * span * 0.5;
+    const rise = Math.max(0, 1 - t * t);
+    const floor = -12 + (clearZ + 12) * Math.pow(rise, 0.78);
+    const roof = crownZ - t * t * (38 + 4 * Math.sin(7 * t));
+    const half = width * (0.5 + 0.36 * t * t);
+    const center = 2.4 * Math.sin(4 * t);
+    const ring = [
+      [-0.57, floor + 1.5], [0.42, floor], [0.93, floor + 4],
+      [1, roof - 8], [0.54, roof], [-0.4, roof - 0.8],
+      [-1, roof - 6], [-0.89, floor + 8],
+    ];
+    ring.forEach(([edge, y], j) => {
+      positions.push(center + edge * half, y, spanPosition);
+      uvs.push(spanPosition / 25, (y + edge * half) / 25);
+      if (i === sections) return;
+      const a = i * sides + j, b = i * sides + (j + 1) % sides;
+      faces.push(a, b, a + sides, b, b + sides, a + sides);
+    });
   }
-
-  // 拱肋主体: 由 26 段粗粝六棱柱状玄武岩楔石交错咬合横跨百米海峡
-  for (let i = 0; i <= segs; i++) {
-    const u = (i / segs) * 2 - 1; // -1 .. +1
-    const zLoc = u * halfSpan;
-    const archCurve = 1 - u * u;
-    const yBot = -12 + (clearY + 12) * Math.pow(Math.max(0, archCurve), 0.72);
-    const yTop = crownY - 14 * u * u + 4.5 * Math.sin(u * 9);
-    const thickY = Math.max(14, yTop - yBot);
-    const widthX = 24 + 12 * (1 - archCurve) + 4 * (R() - 0.5);
-
-    const block = new THREE.Mesh(new THREE.CylinderGeometry(widthX * 0.52, widthX * 0.58, span / segs + 7.5, 6), mBasalt);
-    block.position.set((R() - 0.5) * 3.5, (yBot + yTop) * 0.5, zLoc);
-    block.scale.set(1, thickY / widthX, 1);
-    // 沿拱切线倾斜
-    const dyDu = -2 * u * (clearY + 12) * 0.65 / halfSpan;
-    block.rotation.x = Math.PI * 0.5 - Math.atan(dyDu) * 0.45;
-    block.castShadow = !isSoftwareGl;
-    block.receiveShadow = true;
-    archGroup.add(block);
-  }
+  const end = sections * sides;
+  for (let j = 1; j < sides - 1; j++) faces.push(0, j + 1, j, end, end + j, end + j + 1);
+  const archGeo = new THREE.BufferGeometry();
+  archGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  archGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  archGeo.setIndex(faces);
+  archGeo.computeVertexNormals();
+  const arch = new THREE.Mesh(archGeo, mBasalt);
+  arch.castShadow = !isSoftwareGl;
+  arch.receiveShadow = true;
+  archGroup.add(arch);
 }
 
 // 6.2 外海 260 米南剑峰 (meta.swordPeak) 与周边黑色海蚀柱群 (meta.stacks)
@@ -517,7 +528,7 @@ if (meta.seaArch) {
     // 主剑脊 + 环绕攒尖的六棱玄武岩副柱束, 塑造如黑石利剑般刺破洋面的冷峻压迫感
     const subCount = isSword ? 16 : 7;
     const mainSpire = new THREE.Mesh(new THREE.CylinderGeometry(isSword ? 4.2 : 3.2, baseR * 0.58, sh + 45, 6), mBasaltSheer);
-    mainSpire.position.y = (sh - 38) * 0.5;
+    mainSpire.position.y = (sh - 54) * 0.5;
     mainSpire.rotation.z = isSword ? 0.035 : (R() - 0.5) * 0.08;
     mainSpire.castShadow = !isSoftwareGl;
     mainSpire.receiveShadow = true;
@@ -525,7 +536,7 @@ if (meta.seaArch) {
 
     // 剑尖锋刃收顶
     const tip = new THREE.Mesh(new THREE.ConeGeometry(isSword ? 6.5 : 4.2, isSword ? 46 : 16, 6), mBasaltSheer);
-    tip.position.set(isSword ? -2.8 : 0, sh - (isSword ? 18 : 6), 0);
+    tip.position.set(isSword ? -2.8 : 0, sh - (isSword ? 23 : 8), 0);
     tip.rotation.z = isSword ? 0.04 : 0;
     g.add(tip);
 
@@ -551,7 +562,7 @@ if (meta.seaArch) {
   }
 }
 
-// 6.3 山脊黑色玄武岩尖塔群 (主崖岬顶、西尖塔 365m、东尖塔 310m —— 隐约透出远古基核几何感)
+// 6.3 山脊黑色玄武岩尖塔群 (主崖岬顶、西尖塔与东尖塔 —— 隐约透出远古基核几何感)
 if (meta.spires) {
   const R = rng(365310);
   const mAncientSlit = new THREE.MeshBasicMaterial({ color: 0x4cc9e0 });
@@ -561,7 +572,7 @@ if (meta.spires) {
     const groundY = heightAt(wx, wz);
     const towerH = sp.name === '主崖岬' ? 22 : 34;
     const g = new THREE.Group();
-    g.position.set(wx, groundY - 8, wz);
+    g.position.set(wx, Math.min(groundY - 8, sp.h - towerH - 6), wz);
     scene.add(g);
 
     for (let k = 0; k < 6; k++) {
@@ -836,8 +847,8 @@ function makeLabelSprite(text) {
 for (const [name, xk, yk] of meta.labels) {
   const [wx, wz] = W(xk, yk);
   let wy = Math.max(0, heightAt(wx, wz)) + 26;
-  if (name.includes('南剑峰')) wy = 278;
-  if (name.includes('海蚀拱门')) wy = 126;
+  if (name === meta.swordPeak.name) wy = meta.swordPeak.h + 18;
+  if (name === '海蚀拱门') wy = meta.seaArch.crownZ + 20;
   const sp = makeLabelSprite(name);
   sp.position.set(wx, wy, wz);
   labelGroup.add(sp);
@@ -845,19 +856,19 @@ for (const [name, xk, yk] of meta.labels) {
 // 补充崖宅专属标签
 {
   const vp = villa.spotOf(0, 443, 4, 0, 430, 0).pos;
-  const sp = makeLabelSprite('崖宅 (+412~+440m 四层堡垒)');
+  const sp = makeLabelSprite('崖宅 (+412~+440m 贴岩幕墙)');
   sp.position.set(vp[0], 448, vp[2]);
   labelGroup.add(sp);
 }
 
-// ═════════ 9. 14 处 3.1 核心预设传送点 ═════════
+// ═════════ 9. 14 处 3.2 核心预设传送点 ═════════
 function makeSpots() {
-  const vSea = villa.spotOf(-18, 395, 290, 0, 422, 0);
-  const vDeck = villa.spotOf(-7.5, 413.0, 14.5, 2, 425, -4);
+  const vSea = villa.spotOf(-27, 424, 78, 0, 426, 2);
+  const vBalcony = villa.spotOf(0, 423, 3.3, 30, 427, 100);
   const vHall1 = villa.spotOf(-5.5, 423.0, -4.5, 1.5, 424.5, 20);
   const vHall2 = villa.spotOf(4.5, 429.0, -5.2, -1, 427.5, 20);
   const vCrown = villa.spotOf(0, 435.4, -12.0, 0, 435.8, villa.northPortalW - 20);
-  const vNorth = villa.spotOf(0, 435.4, villa.northPortalW - 5.5, -40, 165, villa.northPortalW - 500);
+  const vNorth = villa.spotOf(0, 435.4, villa.northPortalW + 0.3, -40, 165, villa.northPortalW - 500);
   const vLab = villa.spotOf(-4.5, 413.0, -18.0, 6.5, 416.5, -46);
 
   const [archAx, archAz] = worldOf(meta.seaArch.a);
@@ -868,20 +879,23 @@ function makeSpots() {
   const [mdX, mdZ] = W(-0.25, -0.68);
   const [cpX, cpZ] = W(meta.camps[0][0], meta.camps[0][1]);
   const [pkX, pkZ] = W(meta.peak.x, meta.peak.y);
-  const [flX, flZ] = worldOf(meta.falls);
+  const lip = meta.riverProfile[meta.lipIndex];
+  const pool = meta.riverProfile[meta.lipIndex + 1];
+  const [flX, flZ] = worldOf(lip);
+  const [mouthX, mouthZ] = worldOf(meta.riverProfile.at(-1));
 
   return [
-    { key: '1', name: '海上仰望 460m 巨崖与崖宅', pos: vSea.pos, look: [vSea.look[0], 330, vSea.look[2]], fly: true },
-    { key: '2', name: '崖宅 · 纤薄悬挑起降台 (+413m)', pos: vDeck.pos, look: vDeck.look, fly: false },
+    { key: '1', name: '海侧斜看幕墙、阳台与舱口', pos: vSea.pos, look: vSea.look, fly: true },
+    { key: '2', name: '崖宅 · 观海阳台 (+423m)', pos: vBalcony.pos, look: vBalcony.look, fly: false },
     { key: '3', name: '崖宅 · 双层钢化幕墙主厅 (+423m)', pos: vHall1.pos, look: vHall1.look, fly: false },
     { key: '4', name: '崖宅 · 上层书房与居室 (+429m)', pos: vHall2.pos, look: vHall2.look, fly: false },
-    { key: '5', name: '崖宅 · 装甲冠层与穿脊后廊 (+435m)', pos: vCrown.pos, look: vCrown.look, fly: false },
+    { key: '5', name: '崖宅 · 岩内观测层与穿脊后廊 (+435m)', pos: vCrown.pos, look: vCrown.look, fly: false },
     { key: '6', name: '崖宅后廊北口 · 俯瞰镜湖', pos: vNorth.pos, look: vNorth.look, fly: false },
     { key: '7', name: '崖宅 · 60m 重工实验舱与核心', pos: vLab.pos, look: vLab.look, fly: false },
-    { key: '8', name: '一线天水道 · 百米海蚀拱门', pos: [archMx - 95, 42, archMz - 210], look: [archMx + 20, 62, archMz + 80], fly: true },
+    { key: '8', name: `一线天水道 · 海蚀拱门（拱顶 ${meta.seaArch.crownZ} 米）`, pos: [archMx - 95, 42, archMz - 210], look: [archMx, meta.seaArch.clearZ, archMz], fly: true },
     { key: '9', name: '南剑峰 (260m 外海海蚀剑峰)', pos: [swX - 240, 115, swZ + 290], look: [swX, 145, swZ], fly: true },
-    { key: '0', name: '黑砾湾峡湾与百米帘瀑', pos: [flX - 35, 28, flZ - 245], look: [flX, 82, flZ - 15], fly: true },
-    { key: '·', name: '主崖岬绝顶 (460m 刀刃山脊)', pos: [pkX, heightAt(pkX, pkZ) + 4, pkZ], look: [lkX, 150, lkZ], fly: false },
+    { key: '0', name: `黑砾湾 · 帘瀑（落差 ${lip[2] - pool[2]} 米）`, pos: [mouthX - 35, pool[2] + 6, mouthZ - 50], look: [flX, (lip[2] + pool[2]) / 2, flZ], fly: true },
+    { key: '·', name: `主崖岬绝顶 (${meta.peak.h}m 刀刃山脊)`, pos: [pkX, heightAt(pkX, pkZ) + 4, pkZ], look: [lkX, 150, lkZ], fly: false },
     { key: '·', name: '风草甸火山灰台地 (165m)', pos: [mdX + 40, heightAt(mdX + 40, mdZ) + 2, mdZ - 35], look: [pkX, 420, pkZ], fly: false },
     { key: '·', name: '破火山口碗底 · 镜湖 (138m)', pos: [lkX + 165, 148, lkZ - 110], look: [lkX - 60, 145, lkZ + 40], fly: true },
     { key: '·', name: '背风峡谷 · 岩隙营房 (~100人)', pos: [cpX + 95, heightAt(cpX, cpZ) + 32, cpZ + 75], look: [cpX, heightAt(cpX, cpZ) + 4, cpZ], fly: true },
@@ -940,7 +954,7 @@ function goToSpot(idx) {
   });
 }
 
-// 绘制 3.1 右下角小地图底图
+// 绘制 3.2 右下角小地图底图
 const miniCanvas = $('mini');
 const miniCtx = miniCanvas.getContext('2d');
 const miniBg = document.createElement('canvas');
@@ -979,8 +993,17 @@ const MX0 = -2.15, MX1 = 2.05, MY0 = -1.85, MY1 = 1.85;
   bctx.putImageData(img, 0, 0);
   // 标注南剑峰与崖宅红金亮点
   const toMini = (xk, yk) => [((xk - MX0) / (MX1 - MX0)) * mw, ((MY1 - yk) / (MY1 - MY0)) * mh];
+  bctx.strokeStyle = '#79c7d7';
+  bctx.lineWidth = 1.2;
+  bctx.beginPath();
+  meta.riverProfile.forEach(([x, y], i) => {
+    const [px, py] = toMini(x, y);
+    if (i === 0) bctx.moveTo(px, py);
+    else bctx.lineTo(px, py);
+  });
+  bctx.stroke();
   bctx.fillStyle = '#f0b659';
-  const [vx, vy] = toMini(meta.villa.p[0], meta.villa.p[1] + 0.08);
+  const [vx, vy] = toMini(...mapOf(...villa.origin));
   bctx.fillRect(vx - 2.5, vy - 2.5, 5, 5);
   bctx.fillStyle = '#ecf4f8';
   const [sx, sy] = toMini(meta.swordPeak.x, meta.swordPeak.y);
@@ -1102,7 +1125,7 @@ goToSpot(0);
 const goBtn = $('go');
 goBtn.disabled = false;
 goBtn.textContent = '进入岛屿漫游';
-status('3.1 场景就绪');
+status('3.2 场景就绪');
 goBtn.addEventListener('click', () => {
   started = true;
   $('start').classList.add('hidden');
@@ -1208,6 +1231,8 @@ function tick(now) {
   updateHud();
   drawMinimap();
 
+  waveMap.offset.set((clockAcc * 0.013) % 1, (clockAcc * 0.019) % 1);
+  sky.position.copy(camera.position);
   renderer.render(scene, camera);
   afterDraw(tick);
 }
