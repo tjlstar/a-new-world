@@ -307,10 +307,8 @@ const terrainMat = new THREE.MeshStandardMaterial({
   roughness: 0.88,
   metalness: 0.04,
 });
+// 暂存整张地形网格供 buildVilla 精修槽口与挂接裁切着色器，随后再按空间分块提交给场景
 const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
-terrainMesh.receiveShadow = true;
-terrainMesh.castShadow = !isSoftwareGl;
-scene.add(terrainMesh);
 
 // ═════════ 4. 建造 +412~+440m 四层轻薄崖宅 (含地形槽口精修) ═════════
 await nextFrame();
@@ -322,19 +320,106 @@ const villa = buildVilla({ THREE, scene, meta, G, hm, terrainGeo, terrainMesh, t
   for (let k = 0; k < Hf.length; k++) Hf[k] = p.getY(k);
 }
 
+/**
+ * 将无缝地形网格按二维区块切分为独立 Chunk，使视野外的岛背与海底自动触发视锥剔除。
+ */
+function buildTerrainChunks({ geo, material, depthMaterial, nx, ny, chunksX = 8, chunksY = 8, allowShadow = true }) {
+  const group = new THREE.Group();
+  const srcPos = geo.attributes.position.array;
+  const srcNorm = geo.attributes.normal.array;
+  const srcCol = geo.attributes.color.array;
+  const srcUv = geo.attributes.uv.array;
+
+  for (let cy = 0; cy < chunksY; cy++) {
+    const j0 = Math.floor((cy * (ny - 1)) / chunksY);
+    const j1 = Math.floor(((cy + 1) * (ny - 1)) / chunksY);
+    const ch = j1 - j0 + 1;
+
+    for (let cx = 0; cx < chunksX; cx++) {
+      const i0 = Math.floor((cx * (nx - 1)) / chunksX);
+      const i1 = Math.floor(((cx + 1) * (nx - 1)) / chunksX);
+      const cw = i1 - i0 + 1;
+      const vCount = cw * ch;
+
+      const pos = new Float32Array(vCount * 3);
+      const norm = new Float32Array(vCount * 3);
+      const col = new Float32Array(vCount * 3);
+      const uv = new Float32Array(vCount * 2);
+      let maxY = -Infinity;
+
+      for (let lj = 0; lj < ch; lj++) {
+        for (let li = 0; li < cw; li++) {
+          const sk = (j0 + lj) * nx + (i0 + li);
+          const dk = lj * cw + li;
+          const sk3 = sk * 3, dk3 = dk * 3, sk2 = sk * 2, dk2 = dk * 2;
+          const y = srcPos[sk3 + 1];
+          if (y > maxY) maxY = y;
+
+          pos[dk3] = srcPos[sk3]; pos[dk3 + 1] = y; pos[dk3 + 2] = srcPos[sk3 + 2];
+          norm[dk3] = srcNorm[sk3]; norm[dk3 + 1] = srcNorm[sk3 + 1]; norm[dk3 + 2] = srcNorm[sk3 + 2];
+          col[dk3] = srcCol[sk3]; col[dk3 + 1] = srcCol[sk3 + 1]; col[dk3 + 2] = srcCol[sk3 + 2];
+          uv[dk2] = srcUv[sk2]; uv[dk2 + 1] = srcUv[sk2 + 1];
+        }
+      }
+
+      const idxLen = (cw - 1) * (ch - 1) * 6;
+      const idx = vCount <= 65535 ? new Uint16Array(idxLen) : new Uint32Array(idxLen);
+      let p = 0;
+      for (let lj = 0; lj < ch - 1; lj++) {
+        for (let li = 0; li < cw - 1; li++) {
+          const a = lj * cw + li, b = a + 1, c = a + cw, d = c + 1;
+          idx[p++] = a; idx[p++] = b; idx[p++] = c;
+          idx[p++] = b; idx[p++] = d; idx[p++] = c;
+        }
+      }
+
+      const cGeo = new THREE.BufferGeometry();
+      cGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      cGeo.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+      cGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      cGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      cGeo.setIndex(new THREE.BufferAttribute(idx, 1));
+      cGeo.computeBoundingBox();
+      cGeo.computeBoundingSphere();
+
+      const mesh = new THREE.Mesh(cGeo, material);
+      mesh.receiveShadow = true;
+      // 完全淹没在海面 2 米以下的海底区块无需投射太阳阴影
+      mesh.castShadow = allowShadow && maxY > -2;
+      if (depthMaterial) mesh.customDepthMaterial = depthMaterial;
+      group.add(mesh);
+    }
+  }
+  return group;
+}
+
+const terrainGroup = buildTerrainChunks({
+  geo: terrainGeo,
+  material: terrainMat,
+  depthMaterial: terrainMesh.customDepthMaterial,
+  nx: NX,
+  ny: NY,
+  chunksX: 8,
+  chunksY: 8,
+  allowShadow: !isSoftwareGl,
+});
+scene.add(terrainGroup);
+terrainGeo.dispose();
+
 // ═════════ 5. 大洋海面、破火山口镜湖 (138m)、白水河与百米帘瀑 ═════════
 await nextFrame();
 status('注入南太平洋深水、镜湖与百米帘瀑…');
 
-// 南太平洋海面 (深邃冷蓝墨绿, 带细腻法线波光)
+// 南太平洋海面 (深邃冷蓝墨绿, 半透明高光反射, 避免全场景透射重绘开销)
 const oceanMat = new THREE.MeshPhysicalMaterial({
   color: 0x103549,
-  roughness: 0.16,
-  metalness: 0.08,
-  transmission: 0.35,
+  roughness: 0.14,
+  metalness: 0.10,
+  ior: 1.333,
+  reflectivity: 0.90,
+  envMapIntensity: 1.15,
   transparent: true,
   opacity: 0.88,
-  reflectivity: 0.85,
 });
 // 周期波纹法线让掠过海面的阳光断成细碎高光，远处由 mipmap 平滑过渡。
 const waveSize = 128;
@@ -646,7 +731,8 @@ if (meta.spires) {
   }
 }
 
-// 6.5 三条水平电磁弹射口 (+95m / +100m / +90m)、风草甸三座垂直发射井盖与四处出击口
+// 6.5 三条水平电磁弹射口 (2 南 1 北: +95m / +100m / +90m)、风草甸三座垂直发射井盖与四处出击口
+const tunnelPortals = [];
 {
   const mPortal = new THREE.MeshStandardMaterial({ color: 0x3b454e, roughness: 0.45, metalness: 0.72 });
   const mRailGlow = new THREE.MeshBasicMaterial({ color: 0x58d5ee });
@@ -661,6 +747,7 @@ if (meta.spires) {
       const tx = coastX - nx * s, tz = coastZ - nz * s;
       if (heightAt(tx, tz) >= t.z) { px = tx; pz = tz; break; }
     }
+    tunnelPortals.push({ name: t.name, x: px, y: t.z, z: pz, nx, nz });
     const g = new THREE.Group();
     g.position.set(px, t.z, pz);
     g.rotation.y = Math.atan2(nx, nz);
@@ -883,6 +970,7 @@ function makeSpots() {
   const pool = meta.riverProfile[meta.lipIndex + 1];
   const [flX, flZ] = worldOf(lip);
   const [mouthX, mouthZ] = worldOf(meta.riverProfile.at(-1));
+  const northExit = tunnelPortals.find(t => t.name === '北发射口') || tunnelPortals[0];
 
   return [
     { key: '1', name: '海侧斜看幕墙、阳台与舱口', pos: vSea.pos, look: vSea.look, fly: true },
@@ -899,6 +987,7 @@ function makeSpots() {
     { key: '·', name: '风草甸火山灰台地 (165m)', pos: [mdX + 40, heightAt(mdX + 40, mdZ) + 2, mdZ - 35], look: [pkX, 420, pkZ], fly: false },
     { key: '·', name: '破火山口碗底 · 镜湖 (138m)', pos: [lkX + 165, 148, lkZ - 110], look: [lkX - 60, 145, lkZ + 40], fly: true },
     { key: '·', name: '背风峡谷 · 岩隙营房 (~100人)', pos: [cpX + 95, heightAt(cpX, cpZ) + 32, cpZ + 75], look: [cpX, heightAt(cpX, cpZ) + 4, cpZ], fly: true },
+    { key: '·', name: '机库北发射口 (+90m 东岬北崖)', pos: [northExit.x + northExit.nx * 135, northExit.y + 18, northExit.z + northExit.nz * 135], look: [northExit.x, northExit.y, northExit.z], fly: true },
   ];
 }
 const SPOTS = makeSpots();

@@ -376,15 +376,26 @@ function rimField(x, y) {
   return { h: hSum / wSum, d: dMin, w: wAtMin };
 }
 
+// 破火山口内坡与两翼次级火山小山丘: [x, y, 相对抬升m, rx, ry, rot]
+const HILLS = [
+  [-0.92,  0.38, 62, 0.24, 0.16,  0.40], // 镜湖西北火山丘
+  [-0.64,  0.24, 42, 0.18, 0.13, -0.35], // 镜湖西畔小丘
+  [ 0.28, -0.18, 56, 0.22, 0.16,  0.55], // 镜湖东南丘岗
+  [ 0.44,  0.22, 48, 0.20, 0.15, -0.25], // 帘瀑东侧山丘
+  [-1.02,  0.88, 68, 0.25, 0.18,  0.20], // 西岬南麓高丘
+  [ 0.68,  0.34, 54, 0.21, 0.16, -0.50], // 东岬内坡山丘
+  [-0.62, -0.38, 44, 0.18, 0.13,  0.15], // 镜湖-草甸间小山包
+];
+
 function H(x, y) {
-  // 东屿独立高程 (锯齿状山脊高达 280m)
+  // 东屿独立高程 (锯齿状山脊高达 280m, 附加中小尺度峰峦起伏)
   if (onIslet(x, y)) {
     const c = Math.cos(-ISLET.rot), s = Math.sin(-ISLET.rot);
     const lx = (x - ISLET.x) * c - (y - ISLET.y) * s;
     const ly = (x - ISLET.x) * s + (y - ISLET.y) * c;
     const ridge = Math.max(0, 1 - Math.abs(lx) / (ISLET.rx * 0.98));
     const endFade = Math.max(0, 1 - (ly / (ISLET.ry * 1.03)) ** 2);
-    const saw = 0.84 + 0.22 * ridged(lx * 14 + 3, ly * 11 - 2, 3, 701);
+    const saw = 0.80 + 0.26 * ridged(lx * 14 + 3, ly * 11 - 2, 3, 701) + 0.08 * (fbm(x * 8, y * 8, 3, 719) - 0.5);
     return Math.max(2, 282 * Math.pow(ridge, 0.72) * Math.pow(endFade, 0.48) * saw);
   }
 
@@ -393,31 +404,54 @@ function H(x, y) {
   const ridgeProfile = Math.exp(-((rf.d / (rf.w * 1.18)) ** 1.75));
   let z = 148 + (rf.h - 148) * ridgeProfile;
 
-  // 叠加柱状节理折线感与嶙峋山脊噪声
+  // 叠加柱状节理折线感与全岛多尺度丘陵起伏 (主崖岬绝顶区减弱负向压低, 保住 460~467m 主峰)
+  const peakCalm = sstep(0.08, 0.28, Math.hypot(x - (-0.22), y - (-1.13)));
   z += (14 * ridged(x * 3.4, y * 3.4, 3, 401) - 5) * clamp((z - 155) / 140);
-  z += 5.5 * fbm(x * 7.5, y * 7.5, 3, 409);
+  z += (24 * (fbm(x * 3.2 + 1.7, y * 3.2 - 2.3, 3, 603) - 0.44)
+    + 17 * (ridged(x * 5.1 - 1.2, y * 5.1 + 0.8, 3, 617) - 0.34)) * peakCalm;
+  z += 7.5 * (fbm(x * 10.5, y * 10.5, 2, 409) - 0.45);
 
-  // 破火山口巨碗内部下凹 (镜湖 138m + 风草甸 165m)
+  // 破火山口巨碗内部下凹 (保留碗内丘陵起伏, 不再死平)
   const bx = (x - (-0.34)) / 0.62, by = (y - (-0.28)) / 0.76;
   const bowl = sstep(1.18, 0.35, Math.hypot(bx, by));
-  const bowlFloor = lerp(140, 168, clamp((-0.18 - y) / 0.52)) + 3.5 * fbm(x * 5, y * 5, 2, 512);
-  z = lerp(z, bowlFloor, bowl * 0.90);
+  const bowlUndulation = 22 * (fbm(x * 3.8 + 0.9, y * 3.8 - 1.4, 3, 512) - 0.42)
+    + 14 * (ridged(x * 6.2, y * 6.2, 2, 523) - 0.34);
+  const bowlFloor = lerp(142, 174, clamp((-0.18 - y) / 0.52)) + bowlUndulation;
+  z = lerp(z, bowlFloor, bowl * 0.84);
 
-  // 风草甸平坦火山灰台地 (~165m)
+  // 风草甸与镜湖坐标 (用于保护湖面与草甸中心不被填平, 仅留柔和微起伏)
   const mx = ((x - MEADOW.x) * Math.cos(-MEADOW.rot) - (y - MEADOW.y) * Math.sin(-MEADOW.rot)) / MEADOW.rx;
   const my = ((x - MEADOW.x) * Math.sin(-MEADOW.rot) + (y - MEADOW.y) * Math.cos(-MEADOW.rot)) / MEADOW.ry;
-  const mMask = sstep(1.32, 0.72, Math.hypot(mx, my));
-  z = lerp(z, meadowLevel + 1.2 * fbm(x * 9, y * 9, 2, 611), mMask * 0.96);
+  const mDist = Math.hypot(mx, my);
+  const mMask = sstep(1.26, 0.70, mDist);
+  z = lerp(z, meadowLevel + 3.0 * (fbm(x * 7.5, y * 7.5, 2, 611) - 0.42), mMask * 0.94);
 
-  // 镜湖碗底凹陷 (岸边 138.5m)
   const lx = ((x - LAKE.x) * Math.cos(-LAKE.rot) - (y - LAKE.y) * Math.sin(-LAKE.rot)) / LAKE.rx;
   const ly = ((x - LAKE.x) * Math.sin(-LAKE.rot) + (y - LAKE.y) * Math.cos(-LAKE.rot)) / LAKE.ry;
   const lDist = Math.hypot(lx, ly);
-  const lMask = sstep(1.45, 0.96, lDist);
+  const lMask = sstep(1.38, 0.96, lDist);
   z = lerp(z, lakeLevel + 0.8, lMask * 0.97);
 
+  // 叠加岛内次级火山小山丘 (避开镜湖、草甸核心、黑砾湾与主崖岬顶点)
+  const hillMask = sstep(0.95, 1.38, lDist)
+    * sstep(0.68, 1.18, mDist)
+    * sstep(0.10, 0.24, Math.hypot(x - (-0.22), y - (-1.13)));
+  if (hillMask > 0.001) {
+    for (const [hx, hy, hg, rx, ry, rot] of HILLS) {
+      const ch = Math.cos(-rot), sh = Math.sin(-rot);
+      const u = ((x - hx) * ch - (y - hy) * sh) / rx;
+      const v = ((x - hx) * sh + (y - hy) * ch) / ry;
+      const d = Math.hypot(u, v);
+      if (d < 1.25) {
+        const mound = Math.pow(sstep(1.25, 0.0, d), 1.35);
+        const shapeVar = 0.76 + 0.44 * ridged(x * 6.5 + hx * 3, y * 6.5 - hy * 3, 2, 733);
+        z += hg * mound * shapeVar * hillMask;
+      }
+    }
+  }
+
   // 帘瀑北侧至黑砾湾湾底: 从 (0.10, 0.22) 陡跌近百米至深潭与黑色火山砾滩
-  const fx = (x - 0.02) / 0.42, fy = (y - 0.50) / 0.34;
+  const fx = (x - 0.02) / 0.42;
   if (y > 0.16 && Math.abs(x - 0.02) < 0.52) {
     const fjord = sstep(1.15, 0.35, Math.hypot(fx, (y - 0.48) / 0.30));
     const stepDrop = sstep(0.18, 0.28, y); // 在 y=0.22 处急剧跌落 ~90m
@@ -496,11 +530,11 @@ const snapCoast = target => {
   return best;
 };
 
-// 三条水平电磁弹射隧道 (海拔 95m / 100m / 90m)
+// 三条水平电磁弹射隧道 (2 南 1 北: 海拔 95m / 100m / 90m)
 const TUNNELS = [
   { name: '南发射口', start: [-0.25, -0.80], exit: snapCoast([-0.25, -1.25]), z: 95 },
   { name: '西发射口', start: [-0.42, -0.68], exit: snapCoast([-0.82, -0.69]), z: 100 },
-  { name: '东发射口', start: [-0.10, -0.68], exit: snapCoast([ 0.22, -0.74]), z: 90 },
+  { name: '北发射口', start: [-0.10, -0.56], exit: snapCoast([ 0.74,  0.86]), z: 90 },
 ].map(t => ({ ...t, len: Math.hypot(t.exit[0] - t.start[0], t.exit[1] - t.start[1]) }));
 
 // 两座潜艇水下闸门
@@ -840,7 +874,8 @@ function planSVG() {
   o.push(txt(X(1.50), Y(-0.10), '东礁滩', 'xs halo'));
   o.push(txt(X(-1.95), Y(0.02), '西礁滩', 'xs halo end'));
   o.push(txt(X(-0.84), Y(-0.76), '西裂谷 · 西发射口', 'xs halo end'));
-  o.push(txt(X(0.26), Y(-0.80), '裂湾 · 东发射口', 'xs halo'));
+  o.push(txt(X(0.26), Y(-0.80), '裂湾', 'xs halo'));
+  o.push(txt(X(TUNNELS[2].exit[0]), Y(TUNNELS[2].exit[1]) - 9, '北发射口 +90m', 'xs b dhalo mid'));
   o.push(txt(X(WEST_GATE.pos[0]) - 6, Y(WEST_GATE.pos[1]) + 4, '西闸门 −60m', 'xs b dhalo end'));
   o.push(txt(X(MAIN_GATE.pos[0]) - 6, Y(MAIN_GATE.pos[1]) + 11, '主闸门 −80m', 'xs b dhalo end'));
   o.push(txt(X(gens[2][0]) + 6, Y(gens[2][1]) - 5, '幻域浮标环 (2~3 km)', 'xs dhalo'));
@@ -1732,6 +1767,7 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
       ['东峡谷', 1.14, -0.52],
       ['西裂谷', -0.82, -0.72],
       ['裂湾', 0.22, -0.76],
+      ['北发射口 +90m', P2(TUNNELS[2].exit)[0], P2(TUNNELS[2].exit)[1]],
       ['东礁滩', 1.42, -0.10],
       ['西礁滩', -1.88, -0.05],
       ['北暗礁航道', r4(channel[0]), r4(channel[1])],
