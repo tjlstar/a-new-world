@@ -14,7 +14,7 @@
       "name": "island-3d",
       "runtimeExecutable": "node",
       "runtimeArgs": ["三维/server.mjs"],
-      "port": 4174
+      "port": 3000
     }
   ]
 }

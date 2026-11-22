@@ -239,8 +239,8 @@ const isletPts = (() => {
 // 天然玄武岩海蚀拱门，跨越水道中段的狭口，拱顶 106 m
 const SEA_ARCH = { a: [1.366, 0.12], b: [1.527, 0.12], crownZ: 106, clearZ: 68, width: 28 };
 
-// 外海海蚀剑峰 (南剑峰 260m, 底宽 <120m) 及附属海蚀黑石柱
-const SWORD_PEAK = { name: '南剑峰', x: 0.15, y: -1.62, r: 0.055, h: 260 };
+// 外海海蚀剑峰:长约 360m、宽约 100m 的刀片状岩脊,最高 260m,长轴大致平行于南岸;立在一块水下残留岩台上
+const SWORD_PEAK = { name: '南剑峰', x: 0.15, y: -1.62, r: 0.055, h: 260, len: 0.36, wid: 0.10, rot: 0.42 };
 const STACKS = [
   [0.15, -1.62, 260, 0.055, '南剑峰'],
   [0.26, -1.56,  68, 0.022, ''],
@@ -278,11 +278,14 @@ const MEADOW = { x: -0.25, y: -0.68, rx: 0.215, ry: 0.122, rot: -0.10 };
 const meadowPts = blob(MEADOW, 31, 56, 0.75);
 
 // 白水河中心线。平面单位 km，第三列是同一丰水期水面的海拔 m。
+// 瀑唇之后是一座圆形跌水凹壁(凹壁中心 0.101, 0.262, 半径约 40m),水流抛出约 10m 落入潭中,再经窄峡入湾。
 const riverProfile = [
   [-0.1584, 0.0212, lakeLevel], [-0.10, 0.07, 136], [-0.03, 0.12, 134],
-  [0.04, 0.17, 132], [0.101, 0.223, 129], [0.101, 0.237, 39],
-  [0.101, 0.251, 39], [0.10, 0.33, 18], [0.10, 0.42, 0],
+  [0.04, 0.17, 132], [0.101, 0.223, 129], [0.101, 0.233, 38],
+  [0.101, 0.262, 38], [0.10, 0.34, 16], [0.10, 0.42, 0],
 ];
+const PLUNGE = { x: 0.101, y: 0.262, r: 0.040, floor: 37 }; // 跌水凹壁
+const GORGE = [[0.101, 0.262], [0.098, 0.30], [0.102, 0.34], [0.10, 0.42]]; // 瀑下窄峡
 const lipIndex = 4;
 const riverPts = riverProfile.map(([x, y]) => [x, y]);
 const FALLS = riverPts[lipIndex];
@@ -297,10 +300,9 @@ function riverbed(x, y, terrain) {
     const d = Math.hypot(x - ax - t * dx, y - ay - t * dy);
     if (d >= distance) continue;
     distance = d;
-    // 垂直水帘前留出崖面退距，潭底比水面低四米。
-    const bedT = i === lipIndex + 1 ? clamp(t + 0.025) : t;
+    // 瀑唇处直接跌到潭面,不留斜坡;潭底比水面低四米。
     const depth = i === lipIndex + 1 || i === lipIndex + 2 ? 4 : 1.4;
-    bed = lerp(az, bz, bedT) - depth;
+    bed = (i === lipIndex + 1 ? (t < 0.04 ? lerp(az, bz, t / 0.04) : bz) : lerp(az, bz, t)) - depth;
   }
   return lerp(bed, terrain, sstep(0.010, 0.034, distance));
 }
@@ -450,13 +452,43 @@ function H(x, y) {
     }
   }
 
-  // 帘瀑北侧至黑砾湾湾底: 从 (0.10, 0.22) 陡跌近百米至深潭与黑色火山砾滩
+  // 帘瀑北侧至黑砾湾湾底:北缘台地延伸到 y≈0.30 后才下跌入湾,
+  // 瀑布切进台地边缘,形成一座圆形跌水凹壁和一道向湾口展宽的窄峡。
   const fx = (x - 0.02) / 0.42;
   if (y > 0.16 && Math.abs(x - 0.02) < 0.52) {
     const fjord = sstep(1.15, 0.35, Math.hypot(fx, (y - 0.48) / 0.30));
-    const stepDrop = sstep(0.18, 0.28, y); // 在 y=0.22 处急剧跌落 ~90m
-    const gorgeFloor = lerp(130, 8, stepDrop) * (1 - 0.75 * sstep(0.32, 0.44, y));
+    // 陡坎线沿东西方向蜿蜒 ±35m,坎面上有扶壁与块状崩落面
+    const wob = 0.07 * (fbm(x * 6 + 2, 1.3, 2, 1411) - 0.5);
+    const stepDrop = sstep(0.27 + wob, 0.37 + wob, y);
+    const gorgeFloor = lerp(131, 8, stepDrop) * (1 - 0.75 * sstep(0.36, 0.45, y));
     z = lerp(z, gorgeFloor, fjord * 0.95);
+    const band = 4 * stepDrop * (1 - stepDrop);
+    z += band * fjord * (12 * (ridged(x * 38 + 1, y * 38, 2, 1413) - 0.4) + 10 * (fbm(x * 14, y * 14, 2, 1415) - 0.5));
+  }
+  if (y > 0.20 && y < 0.46 && Math.abs(x - 0.10) < 0.12) {
+    const rough = 3 * (fbm(x * 70, y * 70, 2, 1401) - 0.5);
+    // 跌水凹壁:近乎直立的半圆岩壁,壁脚有崩落碎石
+    const dP = Math.hypot(x - PLUNGE.x, y - PLUNGE.y);
+    if (y > PLUNGE.y - PLUNGE.r - 0.004) {
+      const wallR = PLUNGE.r * (1 + 0.10 * (fbm(Math.atan2(y - PLUNGE.y, x - PLUNGE.x) * 2.2, 3.1, 2, 1403) - 0.5));
+      const floorZ = PLUNGE.floor + 7 * sstep(wallR * 0.55, wallR, dP) + rough;
+      z = lerp(floorZ, z, sstep(wallR, wallR + 0.007, dP));
+    }
+    // 窄峡:谷底由潭口 36m 降到湾口 0m,谷宽由 25m 展到 70m
+    let dG = Infinity, tG = 0;
+    for (let i = 1; i < GORGE.length; i++) {
+      const [ax, ay] = GORGE[i - 1], [bx, by] = GORGE[i], vx = bx - ax, vy = by - ay;
+      const u = clamp(((x - ax) * vx + (y - ay) * vy) / (vx * vx + vy * vy));
+      const d = Math.hypot(x - ax - u * vx, y - ay - u * vy);
+      if (d < dG) { dG = d; tG = (i - 1 + u) / (GORGE.length - 1); }
+    }
+    const half = 0.0125 + 0.022 * tG;
+    const floorG = lerp(PLUNGE.floor, 0.5, Math.pow(tG, 0.8)) + 2.5 * Math.abs(rough);
+    z = lerp(Math.min(z, floorG), z, sstep(half, half + 0.008, dG));
+    // 峡壁与凹壁上的块状节理起伏
+    const wallBand = sstep(half - 0.002, half + 0.004, dG) * (1 - sstep(half + 0.008, half + 0.02, dG))
+      + sstep(PLUNGE.r - 0.004, PLUNGE.r + 0.002, dP) * (1 - sstep(PLUNGE.r + 0.006, PLUNGE.r + 0.016, dP)) * (y > PLUNGE.y - PLUNGE.r ? 1 : 0);
+    z += Math.min(1, wallBand) * 8 * (ridged(x * 60 + 3, y * 60, 2, 1417) - 0.4);
   }
 
   // 东峡谷古断裂深槽: 分水鞍部 (0.95,-0.18, ~115m) → 谷口 (1.18,-0.58, ~8m)
@@ -1613,12 +1645,23 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
         const [dd, qx, qy] = dSeg(segAll, x, y);
         const localCrest = Math.max(sCr(x, y), 25);
         const hc = Math.max(localCrest, H(qx, qy), z);
-        const spanM = clamp(hc / top, 0.32, 1.0) * 124; // 最高 124m 水平内缩即达 460m 绝顶!
+        // 沿岸线起伏的崖面:扶壁向海凸出、冲沟向内凹进;崖宅一带保持原样
+        const calm = sstep(0.09, 0.17, Math.hypot(qx - villaCoast[0], qy - villaCoast[1]));
+        const buttress = 2 * (fbm(qx * 15 + 3.1, qy * 15 - 5.2, 3, 1301) - 0.5);
+        const couloir = Math.max(0, ridged(qx * 31 + 1.7, qy * 31 - 0.6, 2, 1311) - 0.72) / 0.28;
+        const spanM = clamp(hc / top, 0.32, 1.0) * 124 * (1 + calm * (0.42 * buttress + 0.75 * couloir));
         const se = (dd * 1000 * 124) / spanM;
         if (se < 124) {
           z = Math.max(0.8, (hc * lerpLine(HF, se)) / top);
           m = 4;
-          z += 2.0 * fbm(x * 60, y * 60, 2, 991) * Math.min(1, z / 12);
+          // 熔岩流层理:每 22–36m 一层,层顶留出窄台,层面随岸线微微起伏
+          const layer = 29 + 7 * (fbm(qx * 5, qy * 5, 2, 1321) - 0.5) * 2;
+          const tz = (z + 9 * (fbm(qx * 3.5, qy * 3.5, 2, 1331) - 0.5)) / layer, f = tz - Math.floor(tz);
+          const stepped = (Math.floor(tz) + sstep(0.5, 0.95, f)) * layer - 9 * (fbm(qx * 3.5, qy * 3.5, 2, 1331) - 0.5);
+          z = lerp(z, stepped, 0.55 * calm * clamp((z - 25) / 40) * clamp((hc - 40) / 60));
+          // 块状节理的细碎起伏
+          z += (2.0 + 2.6 * calm) * (ridged(x * 75, y * 75, 2, 991) - 0.4) * Math.min(1, z / 12);
+          z = Math.max(0.8, z);
         } else if (se < 250) {
           const ridgeTop = Math.max(z, hc * 0.97);
           z = lerp(ridgeTop, z, sstep(124, 250, se));
@@ -1653,8 +1696,19 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
         const chanCut = dChan < 0.09 ? -18 * (1 - dChan / 0.09) : 0;
         z = -(2.5 + dSea * 0.16) + chanCut;
       } else {
-        // 深潜崖海底: 120m 外 -180m, 300m 外 -350m, 1000m 外 -750m
-        z = lerpLine(APRON, -dSea);
+        // 水下陆架:海浪在低海面时期削出的岩台,宽 110–330m,外缘水深 25–50m,外缘之外陡降入深海。
+        // 只有主崖岬一带(主闸门所在)保持离岸即深的深潜崖。
+        const deep = lerpLine(APRON, -dSea);
+        const plunge = sstep(0.62, 0.34, Math.hypot(x - (-0.18), y - (-1.24)));
+        const shelfW = 220 + 110 * (fbm(x * 2.3 + 4.2, y * 2.3 - 1.1, 3, 1201) - 0.5) * 2;
+        const edgeZ = -(37 + 13 * (fbm(x * 3.1, y * 3.1, 2, 1203) - 0.5) * 2);
+        let zs = dSea < shelfW
+          ? -(2 + (-edgeZ - 2) * Math.pow(dSea / shelfW, 1.25)) - 1.6 * Math.abs(vnoise(x * 120, y * 120, 1207))
+          : edgeZ + lerpLine(APRON, -(dSea - shelfW));
+        // 南剑峰脚下的残留岩台
+        const dSword = Math.hypot(x - SWORD_PEAK.x, y - SWORD_PEAK.y);
+        zs = Math.max(zs, -22 - 260 * sstep(0.10, 0.34, dSword));
+        z = Math.max(-800, lerp(zs, deep, plunge));
       }
       m = 0;
     }
@@ -1667,6 +1721,102 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
     }
     zf[idx] = z;
     mat[idx] = m;
+  }
+
+  // ── 水力侵蚀:模拟雨滴顺坡流动、冲刷与沉积,在外侧山坡与岬角上刻出放射状冲沟和沟口堆积 ──
+  // 破火山口内部、镜湖、风草甸、帘瀑与窄峡、崖宅一带不参与;悬崖面只做弱侵蚀。
+  {
+    const emask = new Float32Array(N);
+    for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
+      const idx = j * G.nx + i;
+      if (!(land[idx] || isletM[idx]) || lakeM[idx] || meadM[idx] || zf[idx] < 1) continue;
+      const x = G.x0 + i * G.step, y = G.y0 + j * G.step;
+      const bowlR = Math.hypot((x + 0.34) / 0.62, (y + 0.28) / 0.76);
+      let w = sstep(1.05, 1.28, bowlR);
+      w *= sstep(0.10, 0.18, Math.hypot(x - villaCoast[0], y - villaCoast[1]));
+      w *= sstep(0.11, 0.17, Math.hypot(x - PLUNGE.x, y - PLUNGE.y));
+      if (mat[idx] === 4 && !isletM[idx]) w = 0; // 悬崖面另有处理,雨滴流到崖边即坠海
+      emask[idx] = w;
+    }
+    // 以"格"为高度单位运行,坡度即每格落差;先在 3 倍粗网格上刻出山谷尺度,再在原网格上刻细沟
+    const erodePass = (Z, nx, ny, M, o) => {
+      const R = mulberry32(o.seed);
+      const sample = (x, y) => {
+        const i = x | 0, j = y | 0, u = x - i, v = y - j, k = j * nx + i;
+        const a = Z[k], b = Z[k + 1], c = Z[k + nx], d = Z[k + nx + 1];
+        return [a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v, (b - a) * (1 - v) + (d - c) * v, (c - a) * (1 - u) + (d - b) * u];
+      };
+      for (let n = 0; n < o.drops; n++) {
+        let x = 1 + R() * (nx - 3), y = 1 + R() * (ny - 3);
+        if (M[(y | 0) * nx + (x | 0)] < 0.05) continue;
+        let dx = 0, dy = 0, speed = 1, water = 1, sed = 0;
+        for (let it = 0; it < o.life; it++) {
+          const i = x | 0, j = y | 0, u = x - i, v = y - j, k = j * nx + i;
+          const [h, gx, gy] = sample(x, y);
+          dx = dx * o.inertia - gx * (1 - o.inertia); dy = dy * o.inertia - gy * (1 - o.inertia);
+          const len = Math.hypot(dx, dy);
+          if (len < 1e-9) break;
+          dx /= len; dy /= len;
+          const x2 = x + dx, y2 = y + dy;
+          if (x2 < 1 || y2 < 1 || x2 >= nx - 2 || y2 >= ny - 2 || h < 0) break;
+          const dh = sample(x2, y2)[0] - h, m = M[k];
+          const cap = Math.max(-dh, o.minSlope) * speed * water * o.cap;
+          if (sed > cap || dh > 0) {
+            const dep = (dh > 0 ? Math.min(dh, sed) : (sed - cap) * o.deposit);
+            sed -= dep;
+            const dm = dep * m;
+            Z[k] += dm * (1 - u) * (1 - v); Z[k + 1] += dm * u * (1 - v); Z[k + nx] += dm * (1 - u) * v; Z[k + nx + 1] += dm * u * v;
+          } else {
+            const er = Math.min((cap - sed) * o.erode, -dh, o.maxStep);
+            // 3×3 笔刷取土,避免单格凿成深井
+            let wsum = 0;
+            for (let jj = -1; jj <= 1; jj++) for (let ii = -1; ii <= 1; ii++) wsum += Math.max(0, 1.6 - Math.hypot(ii + 0.5 - u, jj + 0.5 - v)) * M[k + jj * nx + ii];
+            if (wsum > 0) for (let jj = -1; jj <= 1; jj++) for (let ii = -1; ii <= 1; ii++) {
+              const kk = k + jj * nx + ii, wgt = Math.max(0, 1.6 - Math.hypot(ii + 0.5 - u, jj + 0.5 - v)) * M[kk] / wsum;
+              Z[kk] -= er * wgt;
+            }
+            sed += wsum > 0 ? er : 0;
+          }
+          speed = Math.min(o.maxSpeed, Math.sqrt(Math.max(0, speed * speed - dh * o.gravity)));
+          if (m === 0 && it > 2) break; // 流出侵蚀区(坠下悬崖或进入破火山口)即止
+          water *= 1 - o.evap;
+          x = x2; y = y2;
+        }
+      }
+    };
+    const orig = Float32Array.from(zf);
+    // 粗网格(21m)
+    const F = 3, cnx = Math.floor((G.nx - 1) / F) + 1, cny = Math.floor((G.ny - 1) / F) + 1, cell = G.step * 1000 * F;
+    const Zc = new Float32Array(cnx * cny), Mc = new Float32Array(cnx * cny);
+    for (let j = 0; j < cny; j++) for (let i = 0; i < cnx; i++) { const k = j * F * G.nx + i * F; Zc[j * cnx + i] = zf[k] / cell; Mc[j * cnx + i] = emask[k]; }
+    const Zc0 = Float32Array.from(Zc);
+    erodePass(Zc, cnx, cny, Mc, { seed: 7101, drops: +(process.env.ERO_C ?? 8000), life: 70, inertia: 0.08, cap: +(process.env.ERO_CAP ?? 2), minSlope: 0.01, erode: +(process.env.ERO_E ?? 0.3), deposit: 0.3, evap: 0.015, gravity: 3, maxSpeed: 4, maxStep: +(process.env.ERO_CS ?? 0.3) });
+    for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
+      const idx = j * G.nx + i;
+      if (emask[idx] <= 0) continue;
+      const fx = Math.min(i / F, cnx - 1.001), fy = Math.min(j / F, cny - 1.001), ci = fx | 0, cj = fy | 0, u = fx - ci, v = fy - cj, k = cj * cnx + ci;
+      const d = (Zc[k] - Zc0[k]) * (1 - u) * (1 - v) + (Zc[k + 1] - Zc0[k + 1]) * u * (1 - v) + (Zc[k + cnx] - Zc0[k + cnx]) * (1 - u) * v + (Zc[k + cnx + 1] - Zc0[k + cnx + 1]) * u * v;
+      zf[idx] += d * cell * emask[idx];
+    }
+    // 原网格(7m)
+    const fine = G.step * 1000, Zf = new Float32Array(N);
+    for (let k = 0; k < N; k++) Zf[k] = zf[k] / fine;
+    erodePass(Zf, G.nx, G.ny, emask, { seed: 7203, drops: +(process.env.ERO_F ?? 60000), life: 45, inertia: 0.05, cap: +(process.env.ERO_CAP ?? 2), minSlope: 0.01, erode: +(process.env.ERO_E ?? 0.3), deposit: 0.3, evap: 0.02, gravity: 4, maxSpeed: 4, maxStep: +(process.env.ERO_FS ?? 0.3) });
+    let cut = 0, fill = 0, maxCut = 0, landN = 0;
+    for (let k = 0; k < N; k++) {
+      if (emask[k] <= 0) continue;
+      landN++;
+      // 单格总改变量限制在 −38m ~ +9m,避免凿穿山脊
+      const d0 = clamp(Zf[k] * fine - orig[k], -38, 9);
+      const z = Math.max(land[k] || isletM[k] ? 0.8 : -Infinity, orig[k] + d0);
+      const d = z - orig[k];
+      if (d < 0) { cut -= d; maxCut = Math.max(maxCut, -d); } else fill += d;
+      zf[k] = z;
+    }
+    const ds = []; for (let k = 0; k < N; k++) if (emask[k] > 0) ds.push(zf[k] - orig[k]);
+    ds.sort((a, b) => a - b);
+    const pct = p => ds[Math.floor(p * (ds.length - 1))].toFixed(1);
+    console.log(`水力侵蚀: 作用于 ${landN} 格, 平均下切 ${(cut / landN).toFixed(2)} m, 平均沉积 ${(fill / landN).toFixed(2)} m, 最深下切 ${maxCut.toFixed(1)} m | 分位 1%=${pct(0.01)} 10%=${pct(0.1)} 50%=${pct(0.5)} 90%=${pct(0.9)} 99%=${pct(0.99)}`);
   }
 
   // 水下暗礁盘与共生礁头抬升至水面下 -0.8 ~ -2.8m
@@ -1729,6 +1879,7 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
     river: riverPts.map(P2),
     riverProfile, lipIndex,
     falls: FALLS,
+    plunge: PLUNGE,
     gullies: gullyPts.map(g => g.map(P2)),
     feeders: feederPts.map(g => g.map(P2)),
     villa: {
