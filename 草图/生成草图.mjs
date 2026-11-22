@@ -2,6 +2,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { beachProfile, beachShore, sculptBeach, BEACH } from '../三维/beach.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = dirname(here);
@@ -509,7 +510,7 @@ function H(x, y) {
     }
   }
 
-  return riverbed(x, y, Math.max(1.5, z));
+  return riverbed(x, y, sculptBeach(x, y, Math.max(1.5, z)));
 }
 
 // 扫描全岛最高点
@@ -797,6 +798,13 @@ function planSVG() {
     const bPoly = [...beachSeg, [0.22, 0.34], [-0.05, 0.34], [-0.32, 0.38]];
     o.push(`<path d="${pathPts(bPoly.map(P), true)}" fill="${C.obsidian}"/>`);
   }
+  const sandFront = [], sandBack = [];
+  for (let i = 0; i <= 40; i++) {
+    const x = BEACH.west + (BEACH.east - BEACH.west) * i / 40;
+    sandFront.push([x, beachShore(x)]);
+    sandBack.push([x, beachShore(x) - 0.050 * Math.sin(Math.PI * i / 40)]);
+  }
+  o.push(`<path d="${pathPts([...sandFront, ...sandBack.reverse()].map(P), true)}" fill="#978b78" stroke="#5c6562" stroke-width="0.7"/>`);
   // 等高线 (每 50m 一条, 100/200/300/400 加粗)
   for (let lv = 50; lv <= 450; lv += 50) {
     const major = lv % 100 === 0;
@@ -897,7 +905,7 @@ function planSVG() {
   o.push(txt(X(LAKE.x), Y(LAKE.y) + 4, `镜湖 ${lakeLevel}m`, 's b whalo mid'));
   o.push(txt(X(MEADOW.x) + 42, Y(MEADOW.y) + 4, `风草甸 ~${meadowLevel}m`, 'xs b halo'));
   o.push(txt(X(FALLS[0]) + 8, Y(FALLS[1]) + 3, '帘瀑 (落差~90m)', 'xs b halo'));
-  o.push(txt(X(0.02), Y(0.56), '黑砾湾 (黑色火山砾滩)', 's b halo mid'));
+  o.push(txt(X(0.02), Y(0.56), '黑砾湾 (帘瀑西侧火山砂滩)', 's b halo mid'));
   o.push(txt(X(-0.15), Y(1.30), '北暗礁航道', 'xs b dhalo mid'));
   o.push(txt(X(ISLET.x) + 16, Y(ISLET.y), `东屿 ${ISLET.h}m`, 's b halo'));
   o.push(txt(X(1.46), Y(0.24), '一线天水道', 'xs b halo end'));
@@ -1620,7 +1628,7 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
   const meadM = scanMask(meadowPts.map(toPx3), G.nx, G.ny);
   const isletM = scanMask(isletPts.map(toPx3), G.nx, G.ny);
 
-  // mat 编码: 0 海底, 1 云雾林, 2 火山灰草甸(风草甸), 3 黑色火山砾滩(黑砾湾), 4 玄武岩绝壁/尖塔, 5 镜湖湖底, 6 水下暗礁盘
+  // mat 编码: 0 海底, 1 云雾林, 2 火山灰草甸(风草甸), 3 黑色火山砾滩(黑砾湾), 7 帘瀑西侧火山砂小沙滩, 4 玄武岩绝壁/尖塔, 5 镜湖湖底, 6 水下暗礁盘
   const zf = new Float32Array(N), mat = new Uint8Array(N);
   for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
     const x = G.x0 + i * G.step, y = G.y0 + j * G.step, idx = j * G.nx + i;
@@ -1647,18 +1655,17 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
         const hc = Math.max(localCrest, H(qx, qy), z);
         // 沿岸线起伏的崖面:扶壁向海凸出、冲沟向内凹进;崖宅一带保持原样
         const calm = sstep(0.09, 0.17, Math.hypot(qx - villaCoast[0], qy - villaCoast[1]));
-        const buttress = 2 * (fbm(qx * 15 + 3.1, qy * 15 - 5.2, 3, 1301) - 0.5);
+        const buttress = fbm(qx * 15 + 3.1, qy * 15 - 5.2, 3, 1301);
         const couloir = Math.max(0, ridged(qx * 31 + 1.7, qy * 31 - 0.6, 2, 1311) - 0.72) / 0.28;
         const spanM = clamp(hc / top, 0.32, 1.0) * 124 * (1 + calm * (0.42 * buttress + 0.75 * couloir));
         const se = (dd * 1000 * 124) / spanM;
         if (se < 124) {
-          z = Math.max(0.8, (hc * lerpLine(HF, se)) / top);
+          // Preserve the villa's surveyed anchor profile, then blend into an
+          // unbroken coastal face shaped by the local buttresses and ravines.
+          const t = se / 124;
+          const coastalRise = t*t*(3-2*t);
+          z = Math.max(0.8, hc * lerp(lerpLine(HF, se)/top, coastalRise, calm));
           m = 4;
-          // 熔岩流层理:每 22–36m 一层,层顶留出窄台,层面随岸线微微起伏
-          const layer = 29 + 7 * (fbm(qx * 5, qy * 5, 2, 1321) - 0.5) * 2;
-          const tz = (z + 9 * (fbm(qx * 3.5, qy * 3.5, 2, 1331) - 0.5)) / layer, f = tz - Math.floor(tz);
-          const stepped = (Math.floor(tz) + sstep(0.5, 0.95, f)) * layer - 9 * (fbm(qx * 3.5, qy * 3.5, 2, 1331) - 0.5);
-          z = lerp(z, stepped, 0.55 * calm * clamp((z - 25) / 40) * clamp((hc - 40) / 60));
           // 块状节理的细碎起伏
           z += (2.0 + 2.6 * calm) * (ridged(x * 75, y * 75, 2, 991) - 0.4) * Math.min(1, z / 12);
           z = Math.max(0.8, z);
@@ -1832,6 +1839,16 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
     }
   }
 
+  // 在侵蚀与暗礁之后应用最终剖面，保证低潮线、碰撞高度与材质完全一致。
+  for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
+    const k = j * G.nx + i, x = G.x0 + i * G.step, y = G.y0 + j * G.step;
+    const b = beachProfile(x, y);
+    if (b.weight > 0) {
+      zf[k] = sculptBeach(x, y, zf[k]);
+      if (b.sand > 0.45 && zf[k] > -1.5 && zf[k] < 8) mat[k] = 7;
+      else if (b.weight > 0.8 && zf[k] < 0) mat[k] = 0;
+    }
+  }
   const hm = new Int16Array(N);
   let zmin = Infinity, zmax = -Infinity, summitIndex = 0;
   for (let k = 0; k < N; k++) {

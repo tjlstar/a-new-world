@@ -1,0 +1,83 @@
+[
+  {
+    "asset": "coast_sand_03",
+    "map": "Diffuse",
+    "file": "coast_sand_03_diff_1k.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_03/coast_sand_03_diff_1k.jpg",
+    "md5": "d5129558972fa24e0cfdb164958e2920",
+    "license": "CC0-1.0",
+    "resolution": 1024
+  },
+  {
+    "asset": "coast_sand_03",
+    "map": "nor_gl",
+    "file": "coast_sand_03_nor_gl_1k.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_03/coast_sand_03_nor_gl_1k.jpg",
+    "md5": "c18033c3ac57e337d3a22b8fe0e5af3f",
+    "license": "CC0-1.0",
+    "resolution": 1024
+  },
+  {
+    "asset": "coast_sand_03",
+    "map": "Rough",
+    "file": "coast_sand_03_rough_1k.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_03/coast_sand_03_rough_1k.jpg",
+    "md5": "83c9584242d5222476d2aae8074c8cd3",
+    "license": "CC0-1.0",
+    "resolution": 1024
+  },
+  {
+    "asset": "coast_sand_rocks_02",
+    "map": "Diffuse",
+    "file": "coast_sand_rocks_02_diff_1k.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_rocks_02/coast_sand_rocks_02_diff_1k.jpg",
+    "md5": "6fa7bee516a8c01a383a782d802b6a3b",
+    "license": "CC0-1.0",
+    "resolution": 1024
+  },
+  {
+    "asset": "coast_sand_rocks_02",
+    "map": "nor_gl",
+    "file": "coast_sand_rocks_02_nor_gl_1k.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_rocks_02/coast_sand_rocks_02_nor_gl_1k.jpg",
+    "md5": "38045b4c257fb5a87b373e960e3cbb9c",
+    "license": "CC0-1.0",
+    "resolution": 1024
+  },
+  {
+    "asset": "coast_sand_rocks_02",
+    "map": "Rough",
+    "file": "coast_sand_rocks_02_rough_1k.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_rocks_02/coast_sand_rocks_02_rough_1k.jpg",
+    "md5": "fe1a6ef27aba14602724b26e549a2a5c",
+    "license": "CC0-1.0",
+    "resolution": 1024
+  },
+  {
+    "asset": "forest_ground_04",
+    "map": "Diffuse",
+    "file": "forest_ground_04_diff_1k.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forest_ground_04/forest_ground_04_diff_1k.jpg",
+    "md5": "6ad9df4d731a238299806f739a26af83",
+    "license": "CC0-1.0",
+    "resolution": 1024
+  },
+  {
+    "asset": "forest_ground_04",
+    "map": "nor_gl",
+    "file": "forest_ground_04_nor_gl_1k.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forest_ground_04/forest_ground_04_nor_gl_1k.jpg",
+    "md5": "a010a0802c2d9a930c6f00d3b1f196d2",
+    "license": "CC0-1.0",
+    "resolution": 1024
+  },
+  {
+    "asset": "forest_ground_04",
+    "map": "Rough",
+    "file": "forest_ground_04_rough_1k.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forest_ground_04/forest_ground_04_rough_1k.jpg",
+    "md5": "b5c7ba5c16f00261e9a765d52cf7e0ac",
+    "license": "CC0-1.0",
+    "resolution": 1024
+  }
+]

@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "build": "node --check server.js && node --check 草图/生成草图.mjs && node --check 三维/main.js && node --check 三维/villa.js",
-    "lint": "node --check server.js && node --check 草图/生成草图.mjs && node --check 三维/main.js && node --check 三维/villa.js"
+    "build": "node --check server.js && node --check 草图/生成草图.mjs && node --check 三维/main.js && node --check 三维/villa.js && node --check 三维/beach.js && node --check 三维/environment.js && node --check 三维/landscape.js",
+    "lint": "node --check server.js && node --check 草图/生成草图.mjs && node --check 三维/main.js && node --check 三维/villa.js && node --check 三维/beach.js && node --check 三维/environment.js && node --check 三维/landscape.js"
   },
   "dependencies": {
     "express": "^4.21.2"

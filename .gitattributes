@@ -1,0 +1,2 @@
+# Height fields contain raw typed-array data; never normalize their line endings.
+*.bin binary

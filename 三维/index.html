@@ -132,6 +132,17 @@
     padding: 6px 16px; font-size: 13.5px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 8;
   }
   #toast.on { opacity: 1; }
+  @media (max-width: 700px) {
+    #hud { min-width: 0; width: 205px; font-size: 11px; }
+    #hud .ver { font-size: 10px; }
+    #toolbar { top: 142px; }
+    #spots { top: auto; bottom: 12px; right: 12px; max-height: 27vh; width: 220px; }
+    #map { display: none; }
+    #help { max-width: 180px; font-size: 10px; }
+    #start .box { padding: 18px; max-height: 95vh; overflow-y: auto; }
+    #start table { font-size: 11px; }
+    #start td:first-child { white-space: normal; padding-right: 10px; }
+  }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -154,7 +165,7 @@
 </div>
 
 <div id="help" class="panel">
-  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · 鼠标转向 · <kbd>Shift</kbd> 加速 · <kbd>空格</kbd> 跳/升 · <kbd>C</kbd> 降<br>
+  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · 鼠标转向 · 滚轮缩放 · <kbd>Shift</kbd> 加速 · <kbd>空格</kbd> 跳/升 · <kbd>C</kbd> 降<br>
   <kbd>F</kbd> 步行/飞行 · <kbd>1</kbd>–<kbd>0</kbd> 传送 · <kbd>E</kbd>/<kbd>Q</kbd> 崖宅四层电梯(门口按<kbd>E</kbd>呼叫)<br>
   <kbd>G</kbd> 3.2 工程草图 · <kbd>L</kbd> 地标 · <kbd>H</kbd> 幻域光幕 · <kbd>M</kbd> 地图 · <kbd>U</kbd> 界面
 </div>
@@ -178,12 +189,12 @@
     <div class="badge">版本 3.2 · 破火山口巨碗 &amp; 贴岩幕墙崖宅</div>
     <h1>岛屿基地 · 三维漫游</h1>
     <p class="lead">
-      主崖岬峰顶海拔 467 米，崖宅嵌在南侧绝壁上。漫游展示丰水期：镜湖的湖水沿白水河流过约 330 米，从帘瀑跌落 90 米，再经潭下短峡流入黑砾湾。
+      主崖岬峰顶海拔 467 米，崖宅嵌在南侧绝壁上。漫游展示丰水期：镜湖的湖水沿白水河流过约 330 米，从帘瀑跌落 90 米，再经潭下短峡流入黑砾湾。帘瀑西侧新增火山砂小沙滩，可从地标列表直接进入岸边步行。
     </p>
     <table>
       <tr><td>W A S D / 方向键</td><td>前后左右移动；按住 Shift 奔跑或高速巡航</td></tr>
-      <tr><td>鼠标视角</td><td>点击画面锁定鼠标自由环视（Esc 释放；未锁定时可按住左键拖拽转向）</td></tr>
-      <tr><td>F · 空格 / C</td><td>切换【步行 / 自由飞行】；步行时空格跳跃，飞行时空格上升、C 下降</td></tr>
+      <tr><td>鼠标视角</td><td>滚轮缩放视角；点击画面锁定鼠标自由环视（Esc 释放；未锁定时可按住左键拖拽转向）</td></tr>
+      <tr><td>F · 空格 / C</td><td>切换【步行 / 自由飞行】；步行时空格跳跃，飞行时空格上升、C 下降，可潜入海面观察陆架</td></tr>
       <tr><td>1 – 0 及右侧列表</td><td>一键传送至观海阳台、双层幕墙主厅、穿脊后廊、海蚀拱门、南剑峰、北发射口等多处地标</td></tr>
       <tr><td>E / Q</td><td>崖宅四层电梯：轿厢内按 E 上楼 / Q 下楼，井道旁按 E 呼叫电梯（亦可直接走步梯）</td></tr>
       <tr><td>G / L / H / M / U</td><td>G 查看四张 3.2 工程草图 · L 地名标签 · H 幻域边界 · M 小地图 · U 隐藏面板</td></tr>
