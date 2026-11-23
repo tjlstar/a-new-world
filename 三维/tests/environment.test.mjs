@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { BEACH, beachShore, beachProfile, sculptBeach } from '../beach.js';
 import * as THREE from '../vendor/three.module.min.js';
 import { buildSeaArchGeometry } from '../sea-arch.js';
+import { buildCoastalDetails } from '../environment.js';
 
 const read = path => readFileSync(new URL(path, import.meta.url));
 const meta = JSON.parse(read('../data/island.json'));
@@ -63,6 +64,36 @@ test('beach does not alter waterfall, river mouth, lake, villa or flanking cliff
   const points = [...meta.riverProfile, [meta.plunge.x, meta.plunge.y], [-.42, -.02], meta.villa.p, [-.55, .72], [.45, .55]];
   for (const [x, y] of points) assert.equal(sculptBeach(x, y, 123.4), 123.4, `Protected point ${x},${y}`);
 });
+function ground(x, y) {
+  const { x0, y0, step, nx } = meta.grid;
+  const gx = (x - x0) / step, gy = (y - y0) / step;
+  const i = Math.floor(gx), j = Math.floor(gy), u = gx - i, v = gy - j;
+  const h = (di, dj) => heights.readInt16LE(2 * ((j + dj) * nx + i + di)) * meta.heightScale;
+  return u + v <= 1
+    ? h(0, 0) * (1 - u - v) + h(1, 0) * u + h(0, 1) * v
+    : h(1, 1) * (u + v - 1) + h(0, 1) * (1 - u) + h(1, 0) * (1 - v);
+}
+test('waterfall clears the cliff and lands in an inlet open to the sea', () => {
+  const lip = meta.riverProfile[meta.lipIndex], impact = meta.riverProfile.at(-1);
+  const { step } = meta.grid;
+  assert.equal(meta.riverProfile.length, meta.lipIndex + 2);
+  assert.equal(lip[2], 129);
+  assert.equal(impact[2], 0);
+  assert.ok(Math.abs(ground(lip[0], lip[1]) - lip[2]) < 2, 'Upstream water must reach the rock lip');
+  for (let i = 0; i <= 64; i++) {
+    const f = i / 64, y = lip[1] + f * (impact[1] - lip[1]);
+    const surface = lip[2] + f * f * (impact[2] - lip[2]);
+    for (const offset of [-1, 0, 1]) {
+      const x = lip[0] + f * (impact[0] - lip[0]) + offset * (0.003 + 0.007 * f);
+      assert.ok(ground(x, y) < surface, 'The falling sheet must clear the terrain');
+    }
+  }
+  for (let y = impact[1]; y <= 0.48; y += step / 2) {
+    for (const offset of [-0.012, 0, 0.012]) {
+      assert.ok(ground(impact[0] + offset, y) < -2, 'An open swath of seawater must reach the falls');
+    }
+  }
+});
 test('beach crosses sea level gradually and offers walkable dry sand', () => {
   for (const x of [-.20, -.10, 0]) {
     let previous = -Infinity;
@@ -91,6 +122,25 @@ test('exported height and sand material agree with the beach profile', () => {
     }
   }
   assert.ok(drySand > 150, 'A substantial dry, walkable sand area must exist');
+});
+test('nearshore reef footprints stay seaward of the waterline', () => {
+  let seed = 87021;
+  const random = () => ((seed = (Math.imul(1664525, seed) + 1013904223) >>> 0) / 4294967296);
+  const heightAt = (x, z) => ground(x / 1000, -z / 1000);
+  const { root } = buildCoastalDetails({ scene: new THREE.Scene(), heightAt, random, sets: { rock: {} }, software: false });
+  const rocks = root.getObjectByName('近岸浅水礁石');
+  assert.ok(rocks.count > 0);
+  const position = rocks.geometry.attributes.position, transform = new THREE.Matrix4(), vertex = new THREE.Vector3();
+  let exposed = false;
+  for (let i = 0; i < rocks.count; i++) {
+    rocks.getMatrixAt(i, transform);
+    for (let j = 0; j < position.count; j++) {
+      vertex.fromBufferAttribute(position, j).applyMatrix4(transform);
+      assert.ok(heightAt(vertex.x, vertex.z) < 0, 'Rock must have water beneath its entire outline');
+      if (vertex.y > 0) exposed = true;
+    }
+  }
+  assert.ok(exposed, 'Some reef tops should be visible above the water');
 });
 test('all nine local CC0 texture files match their recorded source hashes', () => {
   const sources = JSON.parse(read('../assets/textures/sources.json').toString().replace(/^\uFEFF/, ''));

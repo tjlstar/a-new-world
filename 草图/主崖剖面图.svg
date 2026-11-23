@@ -22,7 +22,7 @@
     </linearGradient>
   </defs>
 <rect width="960" height="780" fill="#f5f7f8"/>
-<text x="68" y="26" class="title">主崖与崖宅 · 1:1 真实比例横剖面 (3.2 版)</text>
+<text x="68" y="26" class="title">主崖与崖宅 · 1:1 真实比例横剖面 (3.3 版)</text>
 <text x="68" y="43" class="sub">水平与垂直同比例: 展现 +412~+440 米精悍竖向崖宅悬于 460 米巨崖之巅的真实压迫感, 顶层后廊直穿刀刃山脊俯瞰火山口</text>
 <g clip-path="url(#cliffClip)">
 <rect x="68" y="56" width="844" height="684" fill="#e4edf2"/>
@@ -55,7 +55,7 @@
 <rect x="464.7" y="113" width="31.9" height="13.7" fill="#e5dfd3" stroke="#182026" stroke-width="1"/>
 <line x1="441.9" y1="107.3" x2="441.9" y2="126.7" stroke="#cad5de" stroke-width="1.8"/>
 <polygon points="444.2,107.3 460.2,107.3 460.2,112.8 444.2,112.8" fill="#8e9ba6" stroke="#182026" stroke-width="1.1"/>
-<polygon points="460.2,109.1 500.1,110.5 500.1,113.9 460.2,112.5" fill="#e5dfd3" stroke="#182026" stroke-width="0.9"/>
+<polygon points="460.2,109.1 500.1,110.5 500.1,113.9 460.2,113" fill="#e5dfd3" stroke="#182026" stroke-width="0.9"/>
 <rect x="489.8" y="113" width="5.7" height="604.2" fill="#d5cfc3" stroke="#20262c" stroke-width="0.9"/>
 <polygon points="367.8,496 923,502.9 923,510.9 367.8,504" fill="#ebb9a4" stroke="#9e4733" stroke-width="1.1"/>
 <path d="M809,529.1 L809,492.6 Q866,474.4 923,478.9 L923,529.1 Z" fill="#e5dfd3" stroke="#1c2228" stroke-width="1.2"/>
@@ -86,7 +86,7 @@
 <text x="375.4" y="122.7" class="xs b halo end">双层钢化玻璃幕墙主厅 (423–435 m)</text>
 <path d="M439.6,126.7 L373.5,136.9" fill="none" stroke="#1a252e" stroke-width="0.85"/>
 <text x="368.5" y="140.9" class="xs b halo end">主厅观海阳台 +423 m（外挑 2 m）</text>
-<path d="M500.1,111.9 L563.9,98.2" fill="none" stroke="#1a252e" stroke-width="0.85"/>
+<path d="M500.1,113 L563.9,98.2" fill="none" stroke="#1a252e" stroke-width="0.85"/>
 <text x="568.9" y="102.2" class="xs b halo">山体后通道: 穿出刀刃山脊直望火山口与镜湖</text>
 <path d="M506.9,133.5 L569.6,134.7" fill="none" stroke="#1a252e" stroke-width="0.85"/>
 <text x="574.6" y="138.7" class="xs b halo">底部重工实验舱 (向岩内纵深 60 m)</text>

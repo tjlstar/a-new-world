@@ -1,0 +1,54 @@
+{
+  "version": "3.3",
+  "heightmap_file": "T_Island_Heightmap_16bit.png",
+  "resolution": [
+    1009,
+    1009
+  ],
+  "ue5_landscape_config": {
+    "section_size": "63x63 Quads",
+    "sections_per_component": "1x1 Section",
+    "number_of_components": "16x16",
+    "overall_resolution": "1009x1009",
+    "location_cm": [
+      0.0,
+      0.0,
+      -16840.816
+    ],
+    "rotation_deg": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      500.0,
+      500.0,
+      246.71556
+    ]
+  },
+  "world_bounds_m": {
+    "x_min": -2520.0,
+    "x_max": 2520.0,
+    "y_min": -2520.0,
+    "y_max": 2520.0,
+    "z_min": -800.0,
+    "z_max": 463.184,
+    "z_range": 1263.184,
+    "sea_level_z_m": 0.0,
+    "sea_level_uint16": 41505
+  },
+  "roundtrip_qa": {
+    "max_error_m": 0.00978,
+    "rmse_m": 0.00507,
+    "pass": true
+  },
+  "axis_note": "Row 0 of heightmap/weightmaps = North (+Y Blender = -Y UE5); Row 1008 = South (-Y Blender = +Y UE5); Col 0 = West (-X); Col 1008 = East (+X).",
+  "weightmaps": [
+    "Weightmap_Forest.png",
+    "Weightmap_LakesideGrass.png",
+    "Weightmap_Basalt.png",
+    "Weightmap_WhiteSand.png",
+    "Weightmap_Seabed.png",
+    "T_Landscape_Splat_RGBA.png"
+  ]
+}

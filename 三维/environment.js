@@ -21,7 +21,7 @@ export async function loadSurfaceTextures(renderer, fallback) {
   return { rock: sets.coast_sand_rocks_02, sand: sets.coast_sand_03, forest: sets.forest_ground_04, failed };
 }
 
-export function installTerrainSurface(material, sets) {
+export function installTerrainSurface(material, sets, useBeach = false) {
   if (sets.failed.length) return; // Never compile a shader with incomplete samplers.
   material.map = null;
   const previous = material.onBeforeCompile;
@@ -34,6 +34,10 @@ export function installTerrainSurface(material, sets) {
       }
     }
     shader.vertexShader = 'varying vec3 vSurfacePosition; varying vec3 vSurfaceNormal;\n' + shader.vertexShader;
+    if (useBeach) {
+      shader.vertexShader = 'attribute float beachSand; varying float vBeachSand;\n' + shader.vertexShader;
+      shader.vertexShader = shader.vertexShader.replace('#include <color_vertex>', '#include <color_vertex>\nvBeachSand = beachSand;');
+    }
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `
       #include <begin_vertex>
       vSurfacePosition = (modelMatrix * vec4(position, 1.0)).xyz;
@@ -42,6 +46,7 @@ export function installTerrainSurface(material, sets) {
     shader.fragmentShader = `
       varying vec3 vSurfacePosition;
       varying vec3 vSurfaceNormal;
+      ${useBeach ? 'varying float vBeachSand;' : ''}
       uniform sampler2D rockColor, rockNormal, rockRough;
       uniform sampler2D sandColor, sandNormal, sandRough;
       uniform sampler2D soilColor, soilNormal, soilRough;
@@ -57,11 +62,7 @@ export function installTerrainSurface(material, sets) {
       vec3 weights = pow(abs(groundNormal), vec3(5.0));
       weights /= max(dot(weights, vec3(1.0)), 0.001);
       vec3 p = vSurfacePosition;
-      float x = p.x / 1000.0;
-      float shore = 0.433 + 0.40 * (x + 0.015) * (x + 0.015) + 0.003 * sin(x * 38.0);
-      float inland = (shore + p.z / 1000.0) * 1000.0;
-      float sandWeight = smoothstep(-0.265, -0.227, x) * (1.0 - smoothstep(0.025, 0.060, x))
-        * (1.0 - smoothstep(7.0, 13.0, p.y)) * smoothstep(-22.0, -3.0, inland);
+      float sandWeight = ${useBeach ? 'vBeachSand * smoothstep(0.63, 0.92, groundNormal.y)' : '0.0'};
       float grassWeight = smoothstep(0.018, 0.065, vColor.g - vColor.r)
         * smoothstep(0.55, 0.90, groundNormal.y) * (1.0 - sandWeight);
       vec3 rockP = p + 2.8*sin(p.zxy*.046+p.yzx*.017) + 1.2*sin(p.yzx*.093-p.xyz*.037);
@@ -81,8 +82,9 @@ export function installTerrainSurface(material, sets) {
       vec3 forestFloor=soilTex*vec3(.78,.78,.64);
       landColor=mix(landColor,forestFloor,grassWeight*(.34+.55*litter));
       float wet = 1.0 - smoothstep(0.15, 1.8, p.y);
-      vec3 sandTint = mix(vec3(0.23, 0.215, 0.185), vec3(0.065, 0.073, 0.074), wet);
-      diffuseColor.rgb = mix(landColor, sandTint * clamp(sandTex * 3.8, 0.45, 1.7), sandWeight);
+      vec3 sandTint = mix(vec3(0.81, 0.785, 0.71), vec3(0.40, 0.385, 0.33), wet);
+      float sandGrain = 0.82 + 0.32 * clamp(dot(sandTex, vec3(0.8, 1.6, 0.6)), 0.0, 1.0);
+      diffuseColor.rgb = mix(landColor, sandTint * sandGrain, sandWeight);
     `);
     shader.fragmentShader = shader.fragmentShader.replace('#include <roughnessmap_fragment>', `
       float rockR = projectRock(rockRough, rockP, weights).g;
@@ -99,17 +101,17 @@ export function installTerrainSurface(material, sets) {
       vec3 soilN = texture2D(soilNormal, p.xz / 9.0).xyz * 2.0 - 1.0;
       vec3 sandN = texture2D(sandNormal, sandUV).xyz * 2.0 - 1.0;
       perturb = mix(perturb, vec3(soilN.x, 0.0, soilN.y), grassWeight);
-      perturb = mix(perturb, vec3(sandN.x, 0.0, sandN.y), sandWeight);
+      perturb = mix(perturb, vec3(sandN.x, 0.0, sandN.y) * 0.28, sandWeight);
       perturb -= groundNormal * dot(groundNormal, perturb);
       normal = normalize(normal + mat3(viewMatrix) * perturb * 0.92);
     `);
   };
-  material.customProgramCacheKey = () => 'island-weathered-rock:' + originalProgram;
+  material.customProgramCacheKey = () => 'island-weathered-rock:' + useBeach + originalProgram;
   material.needsUpdate = true;
 }
 
 export function buildCoastalDetails({ scene, heightAt, sets, random, software }) {
-  const root = new THREE.Group(); root.name = '黑砾湾 · 火山砂滩与潮间带'; scene.add(root);
+  const root = new THREE.Group(); root.name = '黑砾湾 · 白沙滩与近岸礁石'; scene.add(root);
   const dummy = new THREE.Object3D();
   const rockMaterial = new THREE.MeshStandardMaterial({ ...sets.rock, color: 0x686e70, roughness: 0.93, normalScale: new THREE.Vector2(0.7, 0.7) });
   const rockGeo = new THREE.IcosahedronGeometry(1, 1);
@@ -120,20 +122,26 @@ export function buildCoastalDetails({ scene, heightAt, sets, random, software })
     pos.setXYZ(i, x * f, y * f, z * f);
   }
   rockGeo.computeVertexNormals();
-  const rocks = new THREE.InstancedMesh(rockGeo, rockMaterial, software ? 280 : 950);
+  const rocks = new THREE.InstancedMesh(rockGeo, rockMaterial, software ? 75 : 180);
+  rocks.name = '近岸浅水礁石';
+  // 礁石沿几处浅海岩脊成簇分布。坐标为沿岸比例和离岸米数。
+  const reefs = [[0.14, 21], [0.32, 37], [0.58, 26], [0.74, 42], [0.88, 20]];
   let count = 0;
-  for (let i = 0; i < 5000 && count < rocks.instanceMatrix.count; i++) {
-    const x = BEACH.west + random() * (BEACH.east - BEACH.west);
-    const inland = -20 + random() * 98, y = beachShore(x) - inland / 1000;
-    const b = beachProfile(x, y), h = heightAt(x * 1000, -y * 1000);
-    const slope = Math.hypot(heightAt(x * 1000 + 2, -y * 1000) - heightAt(x * 1000 - 2, -y * 1000), heightAt(x * 1000, -y * 1000 + 2) - heightAt(x * 1000, -y * 1000 - 2)) / 4;
-    if (h < -2 || h > 24 || b.weight < 0.15 || slope > 0.55) continue;
-    const edge = inland > b.width - 3 || x < BEACH.west + 0.04 || x > BEACH.east - 0.025;
-    if (!edge && random() > 0.20) continue;
-    const size = edge ? 0.45 + random() ** 3 * 3.7 : 0.12 + random() * 0.45;
-    dummy.position.set(x * 1000, h + size * 0.10, -y * 1000);
+  for (let i = 0; i < 2000 && count < rocks.instanceMatrix.count; i++) {
+    const [along, offshore] = reefs[i % reefs.length];
+    const dx = (random() + random() - 1) * 23;
+    const x = BEACH.west + along * (BEACH.east - BEACH.west) + dx / 1000;
+    const wx = x * 1000, wz = -beachShore(x) * 1000 - offshore - dx * 0.23 - (random() - 0.5) * 17;
+    const h = heightAt(wx, wz);
+    const size = 0.65 + 3.6 * random() ** 2, length = size * (1.1 + 0.6 * random());
+    const radius = length * 1.21;
+    if (h > -0.65 || h < -7) continue;
+    const wetFootprint = [-radius, 0, radius].every(ox =>
+      [-radius, 0, radius].every(oz => heightAt(wx + ox, wz + oz) < -0.35));
+    if (!wetFootprint) continue;
+    dummy.position.set(wx, h + size * 0.12, wz);
     dummy.rotation.set(random() * 0.5, random() * 6.28, random() * 0.4);
-    dummy.scale.set(size * (1 + random()), size * 0.65, size);
+    dummy.scale.set(length, size * 0.82, size);
     dummy.updateMatrix(); rocks.setMatrixAt(count, dummy.matrix);
     rocks.setColorAt(count++, new THREE.Color().setHSL(0.55, 0.04, 0.44 + random() * 0.25));
   }
@@ -153,8 +161,10 @@ export function buildCoastalDetails({ scene, heightAt, sets, random, software })
   count = 0;
   for (let i = 0; i < 6000 && count < grass.instanceMatrix.count; i++) {
     const x = BEACH.west + random() * (BEACH.east - BEACH.west);
-    const y = beachShore(x) - (44 + random() * 35) / 1000, h = heightAt(x * 1000, -y * 1000);
-    if (h < 3.6 || h > 29 || beachProfile(x, y).weight < 0.15) continue;
+    const shore = beachShore(x), back = beachProfile(x, shore).width;
+    const y = shore - (back + 12 + random() * 25) / 1000, h = heightAt(x * 1000, -y * 1000);
+    const beach = beachProfile(x, y);
+    if (h < 3.6 || h > 29 || beach.sand > 0.08 || beach.weight < 0.15) continue;
     dummy.position.set(x * 1000, h - 0.05, -y * 1000); dummy.rotation.set(0, random() * 6.28, 0);
     dummy.scale.setScalar(0.6 + random() * 1.3); dummy.updateMatrix(); grass.setMatrixAt(count++, dummy.matrix);
   }

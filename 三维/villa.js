@@ -31,7 +31,7 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, terrainMesh,
   const Y_LAB    = 413.0; // 底部重工实验舱地面与飞行器出口
   const Y_HALL1  = 423.0; // 中央钢化玻璃幕墙主厅 下层 (挑高 6m)
   const Y_HALL2  = 429.0; // 中央钢化玻璃幕墙主厅 上层 (挑高 6m)
-  const Y_CROWN  = 435.4; // 岩内观测层地面 (观测哨 & 通往火山口盆地的山体后通道)
+  const Y_CROWN  = 435.0; // 岩内观测层地面 (观测哨 & 通往火山口盆地的山体后通道)
   const Y_TOP    = 440.0; // 冠层冷灰钛金属顶盖上缘
 
   // 自动探测北侧火山口内壁穿出位置 (沿 w < 0 向北穿过狭窄刀刃山脊, 找到北坡海拔降至 ~434m 处)
@@ -236,7 +236,7 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, terrainMesh,
   box(3.4, 0.28, 3.8, 8.5, Y_HALL2 + 0.72, -21.3, new THREE.MeshStandardMaterial({ color: 0xd8d3c8, roughness: 0.8 }));
 
   // 双层主厅琥珀色克制暖光灯带与点光源
-  for (const yL of [Y_HALL1 + 5.65, Y_HALL2 + 5.75]) {
+  for (const yL of [Y_HALL1 + 5.65, Y_HALL2 + 5.45]) {
     for (const wL of [-1.2, -8.5, -18.5]) {
       box(25.0, 0.12, 0.24, 0, yL, wL, mAmber);
     }
@@ -349,7 +349,7 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, terrainMesh,
     // [uCenter, uHalf, w0, y0, w1, y1]
     [-8.2, 1.3, -4.5,  Y_LAB,   -14.5, Y_HALL1], // 413 -> 423m
     [-8.2, 1.3, -14.5, Y_HALL1, -5.5,  Y_HALL2], // 423 -> 429m
-    [-8.2, 1.3, -5.5,  Y_HALL2, -14.5, Y_CROWN], // 429 -> 435.4m
+    [-8.2, 1.3, -5.5,  Y_HALL2, -14.5, Y_CROWN], // 429 -> 435m
   ];
   for (const [su, uh, w0, y0, w1, y1] of stairs) {
     const steps = 18;
@@ -435,7 +435,7 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, terrainMesh,
       offer(Y_HALL2);
     }
 
-    // 4) 岩内观测层 (+435.4m) + 穿山后廊 + 北坡火山口观景挑台
+    // 4) 岩内观测层 (+435m) + 穿山后廊 + 北坡火山口观景挑台
     if (!inLiftHole && !inStairSlot && Math.abs(u) <= 15.1 && w >= -16.2 && w <= 2.1) {
       offer(Y_CROWN);
     }
@@ -494,7 +494,7 @@ export function buildVilla({ THREE, scene, meta, G, hm, terrainGeo, terrainMesh,
     if (feetY >= Y_CROWN - 0.8) {
       if (w < northPortalW + 0.5) return '崖宅后廊北口 · 俯瞰镜湖';
       if (w < -16) return '崖宅 · 穿脊后山廊道 (+435m)';
-      return '崖宅 · 岩内观测层 (+436m)';
+      return '崖宅 · 岩内观测层 (+435m)';
     }
     if (feetY >= Y_HALL2 - 0.8) return w < -14 ? '崖宅 · 岩内私密居室 (+429m)' : '崖宅 · 幕墙主厅上层 (+429m)';
     if (feetY >= Y_HALL1 - 0.8) return '崖宅 · 双层钢化幕墙主厅 (+423m)';

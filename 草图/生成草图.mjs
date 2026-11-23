@@ -1,4 +1,4 @@
-// 生成草图.mjs — 按《岛屿设定.md》3.2 生成四张 SVG 草图、岛屿草图.html 与 三维/data/*
+// 生成草图.mjs — 按《岛屿设定.md》3.3 生成四张 SVG 草图、岛屿草图.html 与 三维/data/*
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -168,7 +168,7 @@ function marchSquares(arr, G, level) {
   return lines;
 }
 
-// ═════════ 1. 岛形与岸线 (3.2 版 31 控制点, 顺时针) ═════════
+// ═════════ 1. 岛形与岸线 (3.3 版 31 控制点, 顺时针) ═════════
 // [x, y, 崖高m, 类型] 类型: 'c' 绝壁深潜崖, 'k' 崩积黑岩礁滩, 'r' 峡湾陡岩壁, 'b' 黑色火山砾滩
 const CTRL = [
   [-1.85,  0.20,  15, 'k'], // 1 西端, 黑岩礁石滩
@@ -180,7 +180,7 @@ const CTRL = [
   [-0.78,  1.05, 165, 'r'], // 7 西岬内侧陡壁
   [-0.55,  0.72, 135, 'r'], // 8 黑砾湾西壁崖脚
   [-0.25,  0.45,   4, 'b'], // 9 黑砾湾西段(黑色火山砾滩)
-  [ 0.10,  0.42,   3, 'b'], // 10 黑砾湾湾底, 悬瀑入海口
+  [ 0.10,  0.42,   3, 'b'], // 10 黑砾湾通往瀑下海湾的湾口
   [ 0.45,  0.55, 135, 'r'], // 11 黑砾湾东壁崖脚
   [ 0.72,  0.85, 240, 'c'], // 12 东岬陡崖 240m
   [ 1.02,  0.80, 220, 'c'], // 13 东岬尖
@@ -189,16 +189,16 @@ const CTRL = [
   [ 1.42, -0.10,  14, 'k'], // 16 东礁滩, 崩积礁石平台
   [ 1.32, -0.25, 220, 'c'], // 17 一线天水道西壁南口, 220m
   [ 1.18, -0.58,  15, 'k'], // 18 东峡谷谷口, 乱石滩
-  [ 0.92, -1.05, 290, 'c'], // 19 东南崖角, 290m
-  [ 0.62, -0.90, 280, 'c'], // 20 悬崖 280m
-  [ 0.44, -1.02, 320, 'c'], // 21 裂湾东口, 320m
-  [ 0.22, -0.72, 280, 'c'], // 22 裂湾湾顶, 280m
-  [ 0.04, -0.98, 380, 'c'], // 23 裂湾西壁, 380m
+  [ 0.92, -1.00, 290, 'c'], // 19 东南崖角, 290m
+  [ 0.66, -1.06, 295, 'c'], // 20 东南崖肩, 295m
+  [ 0.44, -1.04, 315, 'c'], // 21 裂湾东肩, 315m
+  [ 0.24, -0.92, 285, 'c'], // 22 裂湾湾顶 (柔和弧形海湾, 切深约 160m), 285m
+  [ 0.04, -1.12, 385, 'c'], // 23 主崖东肩, 385m
   [-0.22, -1.25, 460, 'c'], // 24 主崖岬, 460m
-  [-0.55, -1.08, 390, 'c'], // 25 悬崖 390m
-  [-0.82, -0.68, 270, 'c'], // 26 西裂谷谷顶, 270m
-  [-1.12, -0.92, 310, 'c'], // 27 悬崖 310m
-  [-1.45, -1.02, 340, 'c'], // 28 西崖角, 340m
+  [-0.54, -1.14, 390, 'c'], // 25 主崖西肩, 390m
+  [-0.84, -0.96, 280, 'c'], // 26 西裂谷湾顶 (柔和弧形海湾, 切深约 150m), 280m
+  [-1.14, -1.04, 315, 'c'], // 27 西崖角东肩, 315m
+  [-1.44, -0.98, 340, 'c'], // 28 西崖角, 340m
   [-1.68, -0.62, 240, 'c'], // 29 悬崖 240m, 西闸门在此崖下
   [-1.82, -0.28, 130, 'c'], // 30 悬崖 130m
   [-1.88, -0.05,  12, 'k'], // 31 西礁滩, 乱石礁盘
@@ -213,19 +213,23 @@ const coast = rawCoast.map((pt, idx) => {
   const next = rawCoast[(idx + 1) % rawCoast.length];
   let nx = next[1] - prev[1], ny = -(next[0] - prev[0]);
   const L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
-  // 在一线天水道 (ci 13..16) 与黑砾湾底 (ci 8..10) 减小法向扰动, 保证海峡宽度精准为 100~130 米
+  // 在一线天水道、黑砾湾底与南岸连贯弓形大崖减小法向扰动，避免锯齿状岸线
   const narrow = (ci >= 12 && ci <= 16) || (ci >= 8 && ci <= 10) || ci === 23;
-  const amp = narrow ? 0.012 : 0.032;
-  const d = amp * fbm(pt[0] * 4.2 + 7.1, pt[1] * 4.2 - 3.4, 3, 901) + 0.008 * vnoise(pt[0] * 17, pt[1] * 17, 902);
+  const southArc = ci >= 18 && ci <= 29;
+  const amp = narrow ? 0.012 : (southArc ? 0.015 : 0.026);
+  const fineAmp = southArc ? 0.0025 : 0.006;
+  const d = amp * fbm(pt[0] * 3.4 + 7.1, pt[1] * 3.4 - 3.4, 3, 901) + fineAmp * vnoise(pt[0] * 10, pt[1] * 10, 902);
   return { p: [pt[0] + nx * d, pt[1] + ny * d], hc: Math.max(2, pt[2]), kind };
 });
 const coastPts = coast.map(s => s.p);
+// 河口到黑砾湾东壁的岸线，按 x 向东排列。
+const eastBayShore = coastPts.slice(9 * SUB, 10 * SUB + 1);
 const cliffS = coast.filter(s => s.kind === 'c' || s.kind === 'r');
 const northPts = coast.filter(s => s.kind === 'b' || s.kind === 'r').map(s => s.p);
 
 // 东屿: 锯齿状孤绝副岛, 中心 (1.65, 0.15), 长 ~550m, 宽 ~260m, 锯齿脊高达 280m
 // 西岸约在 x = 1.50~1.52, 与主岛东岸 x = 1.38~1.40 形成 110~130m 宽的一线天水道
-const ISLET = { x: 1.65, y: 0.15, rx: 0.132, ry: 0.285, rot: -0.14, h: 280 };
+const ISLET = { x: 1.65, y: 0.15, rx: 0.132, ry: 0.285, rot: -0.14, h: 260 };
 const isletPts = (() => {
   const out = [], n = 64, c = Math.cos(ISLET.rot), s = Math.sin(ISLET.rot);
   for (let i = 0; i < n; i++) {
@@ -268,7 +272,7 @@ const polyArea = pts => {
 };
 const area = polyArea(coastPts) + polyArea(isletPts);
 
-// ═════════ 2. 破火山口盆地、刀刃山脊与尖塔群地形 (3.2 版) ═════════
+// ═════════ 2. 破火山口盆地、刀刃山脊与尖塔群地形 (3.3 版) ═════════
 const lakeLevel = 138;
 const meadowLevel = 165;
 
@@ -279,23 +283,91 @@ const MEADOW = { x: -0.25, y: -0.68, rx: 0.215, ry: 0.122, rot: -0.10 };
 const meadowPts = blob(MEADOW, 31, 56, 0.75);
 
 // 白水河中心线。平面单位 km，第三列是同一丰水期水面的海拔 m。
-// 瀑唇之后是一座圆形跌水凹壁(凹壁中心 0.101, 0.262, 半径约 40m),水流抛出约 10m 落入潭中,再经窄峡入湾。
+// 最后一个点是水帘在黑砾湾海面上的落点。河床只延伸到瀑唇。
 const riverProfile = [
   [-0.1584, 0.0212, lakeLevel], [-0.10, 0.07, 136], [-0.03, 0.12, 134],
-  [0.04, 0.17, 132], [0.101, 0.223, 129], [0.101, 0.233, 38],
-  [0.101, 0.262, 38], [0.10, 0.34, 16], [0.10, 0.42, 0],
+  [0.04, 0.17, 132], [0.101, 0.223, 129], [0.101, 0.234, 0],
 ];
-const PLUNGE = { x: 0.101, y: 0.262, r: 0.040, floor: 37 }; // 跌水凹壁
-const GORGE = [[0.101, 0.262], [0.098, 0.30], [0.102, 0.34], [0.10, 0.42]]; // 瀑下窄峡
-const lipIndex = 4;
+const lipIndex = riverProfile.length - 2;
 const riverPts = riverProfile.map(([x, y]) => [x, y]);
 const FALLS = riverPts[lipIndex];
+const PLUNGE = { x: FALLS[0], y: 0.262, r: 0.040, floor: -18 };
 
-function riverbed(x, y, terrain) {
+// 全岛水力侵蚀从海水切入前的谷地起算，使这次局部改岸不改变远处山坡的冲沟。
+const basinFloorBeforeErosion = 37;
+const gorgeBeforeErosion = [[0.101, 0.262], [0.098, 0.30], [0.102, 0.34], [0.10, 0.42]];
+const erosionRiver = [
+  ...riverProfile.slice(0, lipIndex + 1), [0.101, 0.233, 38],
+  [0.101, 0.262, 38], [0.10, 0.34, 16], [0.10, 0.42, 0],
+];
+const erosionRiverPts = erosionRiver.map(([x, y]) => [x, y]);
+
+// 侵蚀从原来的火山砂岸开始；局部白沙沉积在侵蚀完成后写入最终高度场。
+function erosionBeachHeight(x, y, ground) {
+  if (x <= BEACH.west || x >= BEACH.east) return ground;
+  const inland = (0.433 + 0.40 * (x + 0.015) ** 2 + 0.003 * Math.sin(x * 38) - y) * 1000;
+  const width = 36 + 16 * Math.sin(clamp((x - BEACH.west) / (BEACH.east - BEACH.west)) * Math.PI);
+  const along = sstep(BEACH.west, BEACH.west + 0.038, x) * (1 - sstep(BEACH.east - 0.035, BEACH.east, x));
+  const weight = along * sstep(-80, -38, inland) * (1 - sstep(width, width + 48, inland));
+  const height = inland < 0 ? inland * 0.095 : 0.10 + inland * 0.075 + 0.16 * Math.sin(x * 180 + inland * 0.18) * sstep(2, 14, inland);
+  return lerp(ground, height, weight);
+}
+
+// 湾头是瀑唇下方的半圆凹壁。两侧岩岸略有收放，在旧河口处与黑砾湾连通。
+function inletBanks(y) {
+  const t = sstep(PLUNGE.y, 0.425, y);
+  const arc = clamp((PLUNGE.y - y) / (PLUNGE.y - FALLS[1]));
+  const half = (PLUNGE.r + 0.006 * t) * Math.sqrt(1 - arc * arc);
+  const bend = (0.003 * Math.sin((y - PLUNGE.y) * 42) - 0.003 * t) * (1 - arc);
+  return [PLUNGE.x + bend - half, PLUNGE.x + bend + half];
+}
+
+function inletHeight(x, y, ground) {
+  if (y < FALLS[1] - 0.007 || y >= 0.48 || Math.abs(x - PLUNGE.x) > 0.065) return ground;
+  // 将瀑唇的岩槛接回上游 1.4 米深的河床。
+  const lipWeight = 1 - sstep(0, 0.007, Math.hypot(x - FALLS[0], y - FALLS[1]));
+  ground = lerp(ground, riverProfile[lipIndex][2] - 1.4, lipWeight);
+  if (y <= FALLS[1]) return ground;
+  const [west, east] = inletBanks(y);
+  const centerX = (west + east) * 0.5;
+  const dx = x - centerX;
+  const inside = y < PLUNGE.y
+    ? PLUNGE.r - Math.hypot(dx, (y - PLUNGE.y) * PLUNGE.r / (PLUNGE.y - FALLS[1]))
+    : Math.min(x - west, east - x);
+  // 正面在七米网格内落入水下；两翼的岩面沿凹壁法向过渡，避免方格状的崖脚。
+  const side = sstep(0.008, 0.030, Math.abs(dx));
+  const wall = sstep(-0.009 * side, 0.006 + 0.003 * side, inside);
+  if (wall === 0) return ground;
+  const bed = lerp(PLUNGE.floor, -10, sstep(PLUNGE.y, 0.44, y)) + 2 * fbm(x * 42, y * 37, 2, 1401);
+  return lerp(ground, Math.min(ground, bed), wall * sstep(0.48, 0.42, y));
+}
+
+// 从北湾望向帘瀑时，画面左侧是东岸。沿真实水线接长岸崖，向内陆并入原坡。
+function eastBankCliff(x, y, ground) {
+  if (x <= 0.132 || x >= 0.280 || y <= 0.300 || y >= 0.470) return null;
+  const inland = (lerpLine(eastBayShore, x) - y) * 1000;
+  const rib = fbm(x * 48, 2.7, 2, 1421);
+  // 东端的旧岩岬在水线处就已拔起，向它靠拢时也把崖肩逐渐推向海侧。
+  const headland = sstep(0.205, 0.248, x);
+  const rimDepth = 16 + 9 * rib - 13 * headland;
+  const face = sstep(-3 + 4 * rib - 12 * headland, rimDepth, inland);
+  const gorgeSide = sstep(0.132, 0.154, x + 0.003 * rib);
+  const eastEnd = 1 - sstep(0.240, 0.280, x);
+  const rimHeight = lerp(40, 32, sstep(0.155, 0.240, x)) + 8 * fbm(x * 36, y * 24, 2, 1423);
+  const shoulder = rimHeight + 0.25 * Math.max(0, inland - rimDepth);
+  const lift = shoulder * face * gorgeSide * eastEnd - ground;
+  if (lift <= 0) return null;
+  return {
+    height: ground + lift * sstep(0, 6, lift),
+    material: inland <= rimDepth + 3 || gorgeSide < 0.95 ? 4 : 1,
+  };
+}
+
+function erosionRiverbed(x, y, terrain) {
   if (x < -0.20 || x > 0.14 || y < -0.02 || y > 0.45) return terrain;
   let distance = Infinity, bed = terrain;
-  for (let i = 1; i < riverProfile.length; i++) {
-    const [ax, ay, az] = riverProfile[i - 1], [bx, by, bz] = riverProfile[i];
+  for (let i = 1; i < erosionRiver.length; i++) {
+    const [ax, ay, az] = erosionRiver[i - 1], [bx, by, bz] = erosionRiver[i];
     const dx = bx - ax, dy = by - ay;
     const t = clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy));
     const d = Math.hypot(x - ax - t * dx, y - ay - t * dy);
@@ -316,8 +388,8 @@ const feederPts = [
 // 东峡谷与西裂谷冲沟线
 const gullyPts = [
   [[0.95, -0.18], [1.03, -0.32], [1.11, -0.45], [1.18, -0.58]], // 东峡谷断裂槽
-  [[-0.75, -0.52], [-0.79, -0.60], [-0.82, -0.68]],              // 西裂谷上源
-  [[0.18, -0.56], [0.20, -0.64], [0.22, -0.72]],                 // 裂湾上源
+  [[-0.74, -0.62], [-0.79, -0.79], [-0.84, -0.96]],              // 西裂谷陆上冲沟至柔和弧湾
+  [[0.19, -0.64], [0.22, -0.78], [0.24, -0.92]],                 // 裂湾陆上冲沟至柔和弧湾
 ];
 
 // 马蹄形刀刃山脊折线: [x, y, 脊顶高程m, 横向半宽km]
@@ -326,14 +398,14 @@ const RIM_SPINE = [
   [-1.08,  1.15, 215, 0.24], // 西岬中段
   [-1.32,  0.52, 245, 0.28], // 西北脊
   [-1.25, -0.42, 352, 0.26], // 西尖塔底座脊
-  [-1.40, -0.94, 340, 0.22], // 西崖角
-  [-0.92, -0.78, 330, 0.20], // 西裂谷绕脊
-  [-0.52, -1.00, 412, 0.17], // 主崖西肩
-  [-0.22, -1.13, 456, 0.15], // 主崖岬刀刃主脊 (距南岸 120m 达 460m 绝顶!)
-  [ 0.04, -0.90, 385, 0.17], // 裂湾西肩
-  [ 0.24, -0.64, 295, 0.18], // 裂湾北绕脊
-  [ 0.45, -0.92, 322, 0.19], // 裂湾东口脊
-  [ 0.86, -0.95, 290, 0.22], // 东南崖角
+  [-1.34, -0.84, 342, 0.24], // 西崖角
+  [-0.86, -0.82, 325, 0.23], // 西裂谷绕脊 (顺弓形南岸平顺过渡)
+  [-0.52, -0.98, 408, 0.20], // 主崖西肩
+  [-0.22, -1.12, 456, 0.17], // 主崖岬刀刃主脊 (距南岸 ~125m 达 460m+ 绝顶)
+  [ 0.04, -0.96, 382, 0.20], // 主崖东肩
+  [ 0.25, -0.78, 305, 0.22], // 裂湾北绕脊
+  [ 0.50, -0.92, 315, 0.23], // 裂湾东口脊
+  [ 0.84, -0.88, 292, 0.24], // 东南崖角
   [ 0.95, -0.18, 122, 0.20], // 东峡谷分水鞍部 (断裂低鞍 ~115m)
   [ 0.68, -0.25, 298, 0.23], // 东尖塔底座脊
   [ 1.24,  0.14, 276, 0.20], // 一线天西壁高脊
@@ -352,15 +424,15 @@ const SPIRES = [
   [ 0.95,  0.75, 18, 0.080, '东岬',     220],
 ];
 
-// 七米地形网格中各山脊的局部峰位（与岸脚控制点分别标注）。
+// 七米地形网格中各山脊与独立尖塔的局部峰位（与岸脚控制点分别标注）。
 const summits = [
   { name: '主崖岬', x: -0.249, y: -1.121, h: 467 },
   { name: '西尖塔', x: -1.264, y: -0.456, h: 380 },
   { name: '东尖塔', x: 0.654, y: -0.253, h: 322 },
-  { name: '西崖角', x: -1.348, y: -0.925, h: 352 },
-  { name: '东南崖角', x: 0.829, y: -0.946, h: 302 },
-  { name: '西岬', x: -0.9, y: 1.595, h: 226 },
-  { name: '东岬', x: 0.955, y: 0.706, h: 245 },
+  { name: '西崖角', x: -1.313, y: -0.841, h: 351 },
+  { name: '东南崖角', x: 0.724, y: -0.918, h: 298 },
+  { name: '西岬', x: -0.893, y: 1.525, h: 214 },
+  { name: '东岬', x: 0.962, y: 0.692, h: 239 },
 ];
 
 function rimField(x, y) {
@@ -391,7 +463,7 @@ const HILLS = [
 ];
 
 function H(x, y) {
-  // 东屿独立高程 (锯齿状山脊高达 280m, 附加中小尺度峰峦起伏)
+  // 东屿独立高程 (锯齿状山脊最高约 260m, 附加中小尺度峰峦起伏)
   if (onIslet(x, y)) {
     const c = Math.cos(-ISLET.rot), s = Math.sin(-ISLET.rot);
     const lx = (x - ISLET.x) * c - (y - ISLET.y) * s;
@@ -422,22 +494,15 @@ function H(x, y) {
   const bowlFloor = lerp(142, 174, clamp((-0.18 - y) / 0.52)) + bowlUndulation;
   z = lerp(z, bowlFloor, bowl * 0.84);
 
-  // 风草甸与镜湖坐标 (用于保护湖面与草甸中心不被填平, 仅留柔和微起伏)
-  const mx = ((x - MEADOW.x) * Math.cos(-MEADOW.rot) - (y - MEADOW.y) * Math.sin(-MEADOW.rot)) / MEADOW.rx;
-  const my = ((x - MEADOW.x) * Math.sin(-MEADOW.rot) + (y - MEADOW.y) * Math.cos(-MEADOW.rot)) / MEADOW.ry;
-  const mDist = Math.hypot(mx, my);
-  const mMask = sstep(1.26, 0.70, mDist);
-  z = lerp(z, meadowLevel + 3.0 * (fbm(x * 7.5, y * 7.5, 2, 611) - 0.42), mMask * 0.94);
-
+  // 镜湖坐标 (保留湖面与环湖微缓冲积岸带，不再在盆地南侧强行削平大块孤立草甸)
   const lx = ((x - LAKE.x) * Math.cos(-LAKE.rot) - (y - LAKE.y) * Math.sin(-LAKE.rot)) / LAKE.rx;
   const ly = ((x - LAKE.x) * Math.sin(-LAKE.rot) + (y - LAKE.y) * Math.cos(-LAKE.rot)) / LAKE.ry;
   const lDist = Math.hypot(lx, ly);
   const lMask = sstep(1.38, 0.96, lDist);
   z = lerp(z, lakeLevel + 0.8, lMask * 0.97);
 
-  // 叠加岛内次级火山小山丘 (避开镜湖、草甸核心、黑砾湾与主崖岬顶点)
+  // 叠加岛内次级火山小山丘 (避开镜湖、黑砾湾与主崖岬顶点，盆地南侧自然起伏成林)
   const hillMask = sstep(0.95, 1.38, lDist)
-    * sstep(0.68, 1.18, mDist)
     * sstep(0.10, 0.24, Math.hypot(x - (-0.22), y - (-1.13)));
   if (hillMask > 0.001) {
     for (const [hx, hy, hg, rx, ry, rot] of HILLS) {
@@ -454,7 +519,7 @@ function H(x, y) {
   }
 
   // 帘瀑北侧至黑砾湾湾底:北缘台地延伸到 y≈0.30 后才下跌入湾,
-  // 瀑布切进台地边缘,形成一座圆形跌水凹壁和一道向湾口展宽的窄峡。
+  // 瀑下海湾在岸坡与侵蚀成形后切入台地。
   const fx = (x - 0.02) / 0.42;
   if (y > 0.16 && Math.abs(x - 0.02) < 0.52) {
     const fjord = sstep(1.15, 0.35, Math.hypot(fx, (y - 0.48) / 0.30));
@@ -466,25 +531,26 @@ function H(x, y) {
     const band = 4 * stepDrop * (1 - stepDrop);
     z += band * fjord * (12 * (ridged(x * 38 + 1, y * 38, 2, 1413) - 0.4) + 10 * (fbm(x * 14, y * 14, 2, 1415) - 0.5));
   }
+
   if (y > 0.20 && y < 0.46 && Math.abs(x - 0.10) < 0.12) {
     const rough = 3 * (fbm(x * 70, y * 70, 2, 1401) - 0.5);
     // 跌水凹壁:近乎直立的半圆岩壁,壁脚有崩落碎石
     const dP = Math.hypot(x - PLUNGE.x, y - PLUNGE.y);
     if (y > PLUNGE.y - PLUNGE.r - 0.004) {
       const wallR = PLUNGE.r * (1 + 0.10 * (fbm(Math.atan2(y - PLUNGE.y, x - PLUNGE.x) * 2.2, 3.1, 2, 1403) - 0.5));
-      const floorZ = PLUNGE.floor + 7 * sstep(wallR * 0.55, wallR, dP) + rough;
+      const floorZ = basinFloorBeforeErosion + 7 * sstep(wallR * 0.55, wallR, dP) + rough;
       z = lerp(floorZ, z, sstep(wallR, wallR + 0.007, dP));
     }
     // 窄峡:谷底由潭口 36m 降到湾口 0m,谷宽由 25m 展到 70m
     let dG = Infinity, tG = 0;
-    for (let i = 1; i < GORGE.length; i++) {
-      const [ax, ay] = GORGE[i - 1], [bx, by] = GORGE[i], vx = bx - ax, vy = by - ay;
+    for (let i = 1; i < gorgeBeforeErosion.length; i++) {
+      const [ax, ay] = gorgeBeforeErosion[i - 1], [bx, by] = gorgeBeforeErosion[i], vx = bx - ax, vy = by - ay;
       const u = clamp(((x - ax) * vx + (y - ay) * vy) / (vx * vx + vy * vy));
       const d = Math.hypot(x - ax - u * vx, y - ay - u * vy);
-      if (d < dG) { dG = d; tG = (i - 1 + u) / (GORGE.length - 1); }
+      if (d < dG) { dG = d; tG = (i - 1 + u) / (gorgeBeforeErosion.length - 1); }
     }
     const half = 0.0125 + 0.022 * tG;
-    const floorG = lerp(PLUNGE.floor, 0.5, Math.pow(tG, 0.8)) + 2.5 * Math.abs(rough);
+    const floorG = lerp(basinFloorBeforeErosion, 0.5, Math.pow(tG, 0.8)) + 2.5 * Math.abs(rough);
     z = lerp(Math.min(z, floorG), z, sstep(half, half + 0.008, dG));
     // 峡壁与凹壁上的块状节理起伏
     const wallBand = sstep(half - 0.002, half + 0.004, dG) * (1 - sstep(half + 0.008, half + 0.02, dG))
@@ -510,7 +576,7 @@ function H(x, y) {
     }
   }
 
-  return riverbed(x, y, sculptBeach(x, y, Math.max(1.5, z)));
+  return erosionRiverbed(x, y, erosionBeachHeight(x, y, Math.max(1.5, z)));
 }
 
 // 扫描全岛最高点
@@ -523,7 +589,7 @@ for (let y = -1.35; y <= 1.70; y += 0.01) {
   }
 }
 
-// ═════════ 3. 基地设施、隧道、礁盘与幻域浮标 (3.2 版) ═════════
+// ═════════ 3. 基地设施、隧道、礁盘与幻域浮标 (3.3 版) ═════════
 // 崖宅岸线锚点: 主崖岬绝壁正南
 const villaCoast = (() => {
   let best = [-0.22, -1.25], bd = Infinity;
@@ -538,11 +604,9 @@ const villaCoast = (() => {
 const CAMPS = [
   [-0.85, 0.15, '岩隙营房'],
 ];
-// 四处峡谷/峡湾出击暗门 + 帘瀑水帘暗门
+// 两处东西峡谷出击暗门
 const SALLY = [
   [-0.96,  0.34], // 西峡谷岩壁暗门
-  [-0.50,  0.64], // 黑砾湾西壁暗门
-  [ 0.42,  0.52], // 黑砾湾东壁暗门
   [ 1.07, -0.38], // 东峡谷岩壁暗门
 ];
 // 风草甸草皮下三座机库顶部垂直发射井
@@ -566,7 +630,7 @@ const snapCoast = target => {
 // 三条水平电磁弹射隧道 (2 南 1 北: 海拔 95m / 100m / 90m)
 const TUNNELS = [
   { name: '南发射口', start: [-0.25, -0.80], exit: snapCoast([-0.25, -1.25]), z: 95 },
-  { name: '西发射口', start: [-0.42, -0.68], exit: snapCoast([-0.82, -0.69]), z: 100 },
+  { name: '西发射口', start: [-0.42, -0.68], exit: snapCoast([-0.84, -0.96]), z: 100 },
   { name: '北发射口', start: [-0.10, -0.56], exit: snapCoast([ 0.74,  0.86]), z: 90 },
 ].map(t => ({ ...t, len: Math.hypot(t.exit[0] - t.start[0], t.exit[1] - t.start[1]) }));
 
@@ -611,13 +675,22 @@ const reefs = (() => {
   return out;
 })();
 
-// 幻域浮标: 13 座不规则散布在岛外 2~3.1 km 洋面上
+// 幻域浮标: 13 座不规则散布在距岛屿海岸 2.0~3.5 km 的洋面上（位置不固定、间距不等、非规则圆环）
 const gens = (() => {
   const rng = mulberry32(9031), out = [], n = 13;
+  const coastDist = (x, y) => Math.min(Math.sqrt(dist2Pts(coastPts, x, y)), Math.sqrt(dist2Pts(isletPts, x, y)));
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU + (rng() - 0.5) * 0.26;
-    const rad = 2.15 + rng() * 0.55;
-    out.push([r(Math.cos(a) * rad * 1.12 - 0.10, 3), r(Math.sin(a) * rad * 0.96 + 0.12, 3)]);
+    const a = (i / n) * TAU + (rng() - 0.5) * 0.28;
+    const targetOffshore = 2.10 + rng() * 1.15;
+    const dx = Math.cos(a), dy = Math.sin(a);
+    let lo = 1.6, hi = 6.2;
+    for (let it = 0; it < 22; it++) {
+      const mid = (lo + hi) * 0.5;
+      if (coastDist(dx * mid, dy * mid) < targetOffshore) lo = mid;
+      else hi = mid;
+    }
+    const rad = (lo + hi) * 0.5;
+    out.push([r(dx * rad, 3), r(dy * rad, 3)]);
   }
   return out;
 })();
@@ -631,7 +704,7 @@ function U(x, y) {
   return d / northShelf;
 }
 
-// ═════════ 4. 主崖岬三段式剖面与深潜崖水下坡面 (3.2 版, 0 → 460m) ═════════
+// ═════════ 4. 主崖岬三段式剖面与深潜崖水下坡面 (3.3 版, 0 → 460m) ═════════
 // s 为从海岸基点向岛内水平距离 (m), z 为海拔 (m)
 // 底层 0~+40m 崩积巨石裙与陡坎; 中层 +40~+250m 约 65° 阶梯玄武岩壁 (80°陡坎 + 8~15m 碎石窄台);
 // 上层 +250~+460m 近乎垂直的柱状节理绝壁 (+410~+445m 平直岩槽嵌崖宅, +445~+460m 刀刃山脊)
@@ -708,8 +781,8 @@ const pathPts = (pts, close = false) => 'M' + pts.map(p => `${r(p[0])},${r(p[1])
 // ═════════ 图 1: 平面图 (planSVG) ═════════
 function planSVG() {
   const W = 960, Hh = 740, FX = 56, FY = 58, FW = 848, FH = 620;
-  // 视野涵盖幻域浮标圈: x ∈ [-3.05, 3.05] (6.1 km), y ∈ [-2.15, 2.30] (4.45 km) -> 等比例
-  const xMin = -3.05, xMax = 3.05, yMin = -2.12, yMax = 2.33;
+  // 视野涵盖幻域浮标圈 (距海岸 2~3.5 km): x ∈ [-5.4, 5.4], y ∈ [-4.4, 4.7] -> 等比例
+  const xMin = -5.4, xMax = 5.4, yMin = -4.4, yMax = 4.7;
   const k = Math.min(FW / (xMax - xMin), FH / (yMax - yMin));
   const ox = FX + (FW - (xMax - xMin) * k) * 0.5;
   const oy = FY + (FH - (yMax - yMin) * k) * 0.5;
@@ -717,16 +790,37 @@ function planSVG() {
   const Y = y => oy + (yMax - y) * k;
   const P = p => [X(p[0]), Y(p[1])];
 
+  // 将湾头与两岸接回原来的海岸轮廓，底色、裁切和岸线共用这条线。
+  const westBank = [], eastBank = [];
+  for (let y = FALLS[1] + 0.003; y < 0.45; y += 0.003) {
+    const [west, east] = inletBanks(y);
+    if (onMainLand(west, y)) westBank.push([west, y]);
+    if (onMainLand(east, y)) eastBank.push([east, y]);
+  }
+  const firstEastOf = x => coastPts.findIndex((p, i) => i >= 8 * SUB && p[0] >= x);
+  const sandFront = [];
+  for (let i = 0; i <= 60; i++) {
+    const x = BEACH.west + (BEACH.east - BEACH.west) * i / 60, y = beachShore(x);
+    if (x < inletBanks(y)[0]) sandFront.push([x, y]);
+  }
+  const mapCoast = [
+    ...coastPts.slice(0, firstEastOf(BEACH.west)), ...sandFront,
+    ...westBank.filter(p => p[1] < sandFront.at(-1)[1]).reverse(), FALLS, ...eastBank,
+    ...coastPts.slice(firstEastOf(eastBank.at(-1)[0])),
+  ];
+
   // 计算地形网格用于提取等高线
   const Gp = { x0: -2.05, y0: -1.40, step: 0.018, nx: 220, ny: 178 };
   const hg = new Float32Array(Gp.nx * Gp.ny);
   for (let j = 0; j < Gp.ny; j++) for (let i = 0; i < Gp.nx; i++) {
     const x = Gp.x0 + i * Gp.step, y = Gp.y0 + j * Gp.step;
-    hg[j * Gp.nx + i] = onLand(x, y) ? H(x, y) : -20;
+    const ground = onLand(x, y) ? H(x, y) : -20;
+    const bank = ground >= 0 ? (eastBankCliff(x, y, ground)?.height ?? ground) : ground;
+    hg[j * Gp.nx + i] = inletHeight(x, y, sculptBeach(x, y, bank));
   }
 
   // 外海深潜等深线网格
-  const Gs = { x0: xMin, y0: yMin, step: 0.045, nx: 138, ny: 101 };
+  const Gs = { x0: xMin, y0: yMin, step: 0.08, nx: 136, ny: 115 };
   const sg = new Float32Array(Gs.nx * Gs.ny);
   for (let j = 0; j < Gs.ny; j++) for (let i = 0; i < Gs.nx; i++) {
     const x = Gs.x0 + i * Gs.step, y = Gs.y0 + j * Gs.step;
@@ -741,7 +835,7 @@ function planSVG() {
   o.push(`<defs>
     <style>${BASE_CSS}</style>
     <clipPath id="frame1"><rect x="${FX}" y="${FY}" width="${FW}" height="${FH}"/></clipPath>
-    <clipPath id="landClip"><path d="${pathPts(coastPts.map(P), true)} ${pathPts(isletPts.map(P), true)}"/></clipPath>
+    <clipPath id="landClip"><path d="${pathPts(mapCoast.map(P), true)} ${pathPts(isletPts.map(P), true)}"/></clipPath>
     <radialGradient id="oceanGrad" cx="48%" cy="48%" r="65%">
       <stop offset="0%" stop-color="${C.seaMid}"/>
       <stop offset="65%" stop-color="${C.seaDeep}"/>
@@ -750,7 +844,7 @@ function planSVG() {
   </defs>`);
 
   o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
-  o.push(txt(FX, 28, '岛屿基地 · 平面总图 (3.2 版)', 'title'));
+  o.push(txt(FX, 28, '岛屿基地 · 平面总图 (3.3 版)', 'title'));
   o.push(txt(FX, 46, '半崩塌破火山口巨碗 · 460 米刀刃主峰 · 黑砾湾峡湾 · 一线天水道与东屿 · 外海幻域浮标环', 'sub'));
 
   o.push(`<g clip-path="url(#frame1)">`);
@@ -780,7 +874,7 @@ function planSVG() {
   o.push(`<path d="${pathPts(channelPath.map(P))}" fill="none" stroke="#2d5870" stroke-width="1.6" stroke-dasharray="5 3"/>`);
 
   // 主岛与东屿底色 (云雾林)
-  o.push(`<path d="${pathPts(coastPts.map(P), true)}" fill="${C.forest}"/>`);
+  o.push(`<path d="${pathPts(mapCoast.map(P), true)}" fill="${C.forest}"/>`);
   o.push(`<path d="${pathPts(isletPts.map(P), true)}" fill="${C.forest}"/>`);
 
   // 岛内高程分层设色 (剪裁于陆地内)
@@ -790,21 +884,14 @@ function planSVG() {
       if (ln.length > 6) o.push(`<path d="${pathPts(ln.map(P), true)}" fill="${col}" opacity="${op}"/>`);
     }
   }
-  // 风草甸火山灰台地
-  o.push(`<path d="${pathPts(meadowPts.map(P), true)}" fill="${C.meadow}" stroke="#7f8f5e" stroke-width="0.9"/>`);
-  // 黑砾湾黑色火山砾滩
+  // 黑砾湾黑色火山砾滩 (取消盆地大块孤立风草甸，盆地全覆热带云雾林，仅在镜湖缓岸留窄湖滨草岸)
   const beachSeg = coast.filter(s => s.kind === 'b').map(s => s.p);
   if (beachSeg.length > 2) {
     const bPoly = [...beachSeg, [0.22, 0.34], [-0.05, 0.34], [-0.32, 0.38]];
     o.push(`<path d="${pathPts(bPoly.map(P), true)}" fill="${C.obsidian}"/>`);
   }
-  const sandFront = [], sandBack = [];
-  for (let i = 0; i <= 40; i++) {
-    const x = BEACH.west + (BEACH.east - BEACH.west) * i / 40;
-    sandFront.push([x, beachShore(x)]);
-    sandBack.push([x, beachShore(x) - 0.050 * Math.sin(Math.PI * i / 40)]);
-  }
-  o.push(`<path d="${pathPts([...sandFront, ...sandBack.reverse()].map(P), true)}" fill="#978b78" stroke="#5c6562" stroke-width="0.7"/>`);
+  const sandBack = sandFront.map(([x, y]) => [x, y - beachProfile(x, y).width / 1000]);
+  o.push(`<path d="${pathPts([...sandFront, ...sandBack.reverse()].map(P), true)}" fill="#f1eddb" stroke="#aaa692" stroke-width="0.7"/>`);
   // 等高线 (每 50m 一条, 100/200/300/400 加粗)
   for (let lv = 50; lv <= 450; lv += 50) {
     const major = lv % 100 === 0;
@@ -821,7 +908,7 @@ function planSVG() {
   o.push(`</g>`);
 
   // 海岸线与绝壁短齿线 (hachures)
-  o.push(`<path d="${pathPts(coastPts.map(P), true)}" fill="none" stroke="#1e2930" stroke-width="1.5"/>`);
+  o.push(`<path d="${pathPts(mapCoast.map(P), true)}" fill="none" stroke="#1e2930" stroke-width="1.5"/>`);
   o.push(`<path d="${pathPts(isletPts.map(P), true)}" fill="none" stroke="#1e2930" stroke-width="1.4"/>`);
   for (let i = 0; i < coast.length; i += 3) {
     const s = coast[i];
@@ -903,9 +990,8 @@ function planSVG() {
 
   // 关键地名标注
   o.push(txt(X(LAKE.x), Y(LAKE.y) + 4, `镜湖 ${lakeLevel}m`, 's b whalo mid'));
-  o.push(txt(X(MEADOW.x) + 42, Y(MEADOW.y) + 4, `风草甸 ~${meadowLevel}m`, 'xs b halo'));
-  o.push(txt(X(FALLS[0]) + 8, Y(FALLS[1]) + 3, '帘瀑 (落差~90m)', 'xs b halo'));
-  o.push(txt(X(0.02), Y(0.56), '黑砾湾 (帘瀑西侧火山砂滩)', 's b halo mid'));
+  o.push(txt(X(FALLS[0]) + 8, Y(FALLS[1]) + 3, '帘瀑 (129m 直落入海)', 'xs b halo'));
+  o.push(txt(X(0.02), Y(0.56), '黑砾湾 (帘瀑西侧白沙滩)', 's b halo mid'));
   o.push(txt(X(-0.15), Y(1.30), '北暗礁航道', 'xs b dhalo mid'));
   o.push(txt(X(ISLET.x) + 16, Y(ISLET.y), `东屿 ${ISLET.h}m`, 's b halo'));
   o.push(txt(X(1.46), Y(0.24), '一线天水道', 'xs b halo end'));
@@ -918,20 +1004,20 @@ function planSVG() {
   o.push(txt(X(TUNNELS[2].exit[0]), Y(TUNNELS[2].exit[1]) - 9, '北发射口 +90m', 'xs b dhalo mid'));
   o.push(txt(X(WEST_GATE.pos[0]) - 6, Y(WEST_GATE.pos[1]) + 4, '西闸门 −60m', 'xs b dhalo end'));
   o.push(txt(X(MAIN_GATE.pos[0]) - 6, Y(MAIN_GATE.pos[1]) + 11, '主闸门 −80m', 'xs b dhalo end'));
-  o.push(txt(X(gens[2][0]) + 6, Y(gens[2][1]) - 5, '幻域浮标环 (2~3 km)', 'xs dhalo'));
+  o.push(txt(X(gens[2][0]) + 6, Y(gens[2][1]) - 5, '幻域浮标环 (距岛 2~3.5 km)', 'xs dhalo'));
 
   o.push(`</g>`);
 
   // 坐标刻度、指北针、比例尺与图例
   o.push(`<rect x="${FX}" y="${FY}" width="${FW}" height="${FH}" fill="none" stroke="${C.ink}" stroke-width="1.2"/>`);
-  for (let gx = -3; gx <= 3; gx++) {
+  for (let gx = -5; gx <= 5; gx++) {
     const px = X(gx);
     if (px > FX + 10 && px < FX + FW - 10) {
       o.push(`<line x1="${r(px)}" y1="${FY + FH}" x2="${r(px)}" y2="${FY + FH + 5}" stroke="${C.ink}"/>`);
       o.push(txt(px, FY + FH + 16, `${gx > 0 ? '+' + gx : gx} km`, 'xs mid'));
     }
   }
-  for (let gy = -2; gy <= 2; gy++) {
+  for (let gy = -4; gy <= 4; gy++) {
     const py = Y(gy);
     if (py > FY + 10 && py < FY + FH - 10) {
       o.push(`<line x1="${FX - 5}" y1="${r(py)}" x2="${FX}" y2="${r(py)}" stroke="${C.ink}"/>`);
@@ -963,7 +1049,7 @@ function planSVG() {
   return o.join('\n');
 }
 
-// ═════════ 图 2: 南立面图 + 3.2 崖宅竖向轻薄堡垒立面详图 (elevSVG) ═════════
+// ═════════ 图 2: 南立面图 + 3.3 崖宅竖向轻薄堡垒立面详图 (elevSVG) ═════════
 function elevSVG() {
   const W = 960, Hh = 770;
   const o = [];
@@ -999,7 +1085,7 @@ function elevSVG() {
   const X1 = x => FX1 + (x - x0) * kx;
   const Z1 = z => FY1 + FH1 - (z - (-110)) * kz;
 
-  o.push(txt(FX1, 26, '岛屿基地 · 南立面图与崖宅定稿立面 (3.2 版)', 'title'));
+  o.push(txt(FX1, 26, '岛屿基地 · 南立面图与崖宅定稿立面 (3.3 版)', 'title'));
   o.push(txt(FX1, 43, '上图: 自南侧外海向北远眺 460 米刀刃绝壁、南剑峰与东屿 (垂直比例 2×) · 下图: +412~+440 米贴岩幕墙与观海阳台 1:1 详图', 'sub'));
 
   o.push(`<rect x="${FX1}" y="${FY1}" width="${FW1}" height="${FH1}" fill="url(#skyElev)" stroke="${C.ink}"/>`);
@@ -1082,14 +1168,14 @@ function elevSVG() {
   for (const summit of summits.slice(0, 5)) {
     o.push(txt(X1(summit.x), Z1(summit.h + 8), `${summit.name} ${summit.h}m`, 'xs halo mid'));
   }
-  o.push(txt(X1(ISLET.x), Z1(288), '东屿 280m', 'xs b halo mid'));
+  o.push(txt(X1(ISLET.x), Z1(268), '东屿 260m', 'xs b halo mid'));
   o.push(txt(X1(1.46), Z1(118), '一线天与海蚀拱门', 'xs halo mid'));
   for (const z of [-100, 0, 100, 200, 300, 400, 460]) {
     o.push(`<line x1="${FX1 - 5}" y1="${r(Z1(z))}" x2="${FX1}" y2="${r(Z1(z))}" stroke="${C.ink}"/>`);
     o.push(txt(FX1 - 8, Z1(z) + 3.5, `${z > 0 ? '+' + z : z}m`, 'xs end'));
   }
 
-  // ── 下半幅: 崖宅 3.2 定稿正立面详图 (1:1 等比例, 横向 u ∈ [-46, +46] m, 海拔 z ∈ [400, 460] m) ──
+  // ── 下半幅: 崖宅 3.3 定稿正立面详图 (1:1 等比例, 横向 u ∈ [-46, +46] m, 海拔 z ∈ [400, 460] m) ──
   const FX2 = 58, FY2 = 368, FW2 = 860, FH2 = 364;
   // FH2 = 364 px 对应 Δz = 56 m (404 ~ 460 m) => k2 = 6.5 px/m, 横向显示约 132 m (-66 ~ +66 m)
   const k2 = 6.4, uSpan = FW2 / k2;
@@ -1236,7 +1322,7 @@ function sectionSVG() {
     </linearGradient>
   </defs>`);
   o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
-  o.push(txt(FX, 26, '岛屿基地 · 南北纵剖面图 B–B′ (3.2 版, 沿 x = −0.25 km)', 'title'));
+  o.push(txt(FX, 26, '岛屿基地 · 南北纵剖面图 B–B′ (3.3 版, 沿 x = −0.25 km)', 'title'));
   o.push(txt(FX, 43, '460 米刀刃主崖与深潜崖 · 破火山口碗底(风草甸 165m / 镜湖 138m) · 远古基核壳体 (−670m) 与三层八舱段地下城', 'sub'));
 
   o.push(`<g clip-path="url(#secClip)">`);
@@ -1269,8 +1355,8 @@ function sectionSVG() {
   // 1) 崖宅 (+412 ~ +440m, 嵌于主崖顶部南缘, 并带后山通道直通北坡俯瞰盆地)
   const vy = Y0 + 0.098;
   o.push(`<rect x="${r(Ys(vy))}" y="${r(Zs(440))}" width="${r(0.060 * 1000 * ky)}" height="${r(28 * kz)}" fill="${C.amber}" stroke="#141a20" stroke-width="1.1"/>`);
-  // 后山通道 (+436m 穿通狭窄刀刃山脊至火山口内壁)
-  o.push(`<line x1="${r(Ys(vy + 0.05))}" y1="${r(Zs(436))}" x2="${r(Ys(Y0 + 0.20))}" y2="${r(Zs(428))}" stroke="#f5d28c" stroke-width="2.2"/>`);
+  // 后山通道 (+435m 穿通狭窄刀刃山脊至火山口内壁)
+  o.push(`<line x1="${r(Ys(vy + 0.05))}" y1="${r(Zs(435))}" x2="${r(Ys(Y0 + 0.20))}" y2="${r(Zs(428))}" stroke="#f5d28c" stroke-width="2.2"/>`);
 
   // 2) 机库洞厅 (+70 ~ +115m, 主崖后方 420~760m => y ∈ [-0.82, -0.48], 正在风草甸下方)
   const hy0 = Y0 + 0.42, hy1 = Y0 + 0.76;
@@ -1327,7 +1413,7 @@ function sectionSVG() {
   o.push(txt(Ys(vy - 0.04), Zs(428), '崖宅 +412~+440m', 'xs b halo end'));
   o.push(txt(Ys(-0.68), Zs(182), `风草甸 ~${meadowLevel}m (三座垂直发射井盖)`, 'xs b halo mid'));
   o.push(txt(Ys((l0 + l1) * 0.5), Zs(154), `镜湖 (水面 ${lakeLevel}m, 深 24m)`, 'xs b halo mid'));
-  o.push(txt(Ys(0.35), Zs(108), '北缘缺口与帘瀑投影 (~90m 落差)', 'xs halo'));
+  o.push(txt(Ys(0.35), Zs(108), '北缘缺口与帘瀑投影 (129m 直落入海)', 'xs halo'));
   o.push(txt(Ys(0.56), Zs(22), '黑砾湾峡湾', 'xs b halo mid'));
 
   o.push(txt(Ys((hy0 + hy1) * 0.5), Zs(88), '机库洞厅 (+70~+115m)', 'xs b mid'));
@@ -1402,7 +1488,7 @@ function cliffSVG() {
     </linearGradient>
   </defs>`);
   o.push(`<rect width="${W}" height="${Hh}" fill="#f5f7f8"/>`);
-  o.push(txt(FX4, 26, '主崖与崖宅 · 1:1 真实比例横剖面 (3.2 版)', 'title'));
+  o.push(txt(FX4, 26, '主崖与崖宅 · 1:1 真实比例横剖面 (3.3 版)', 'title'));
   o.push(txt(FX4, 43, '水平与垂直同比例: 展现 +412~+440 米精悍竖向崖宅悬于 460 米巨崖之巅的真实压迫感, 顶层后廊直穿刀刃山脊俯瞰火山口', 'sub'));
 
   o.push(`<g clip-path="url(#cliffClip)">`);
@@ -1448,8 +1534,8 @@ function cliffSVG() {
 
   // 顶部装甲冠层 (435~440m, 平切嵌入崖顶肩部 + 向北穿通狭窄刀刃山脊的后通道 s = 95.5 ~ 149m!)
   o.push(`<polygon points="${Q(100, 440)} ${Q(114, 440)} ${Q(114, 435.2)} ${Q(100, 435.2)}" fill="${C.titanium}" stroke="#182026" stroke-width="1.1"/>`);
-  // 后山廊道直穿北坡观景口 (s = 114 ~ 149m, z = 435.5m)
-  o.push(`<polygon points="${Q(114, 438.4)} ${Q(149, 437.2)} ${Q(149, 434.2)} ${Q(114, 435.4)}" fill="#e5dfd3" stroke="#182026" stroke-width="0.9"/>`);
+  // 后山廊道直穿北坡观景口 (s = 114 ~ 149m, z = 435m)
+  o.push(`<polygon points="${Q(114, 438.4)} ${Q(149, 437.2)} ${Q(149, 434.2)} ${Q(114, 435.0)}" fill="#e5dfd3" stroke="#182026" stroke-width="0.9"/>`);
 
   // 竖井: 从崖宅后方 (s = 142m) 笔直下通机库洞厅与潜艇内港
   o.push(`<rect x="${r(Xs(140))}" y="${r(Zs(435))}" width="${r(5 * k)}" height="${r(Zs(-95) - Zs(435))}" fill="#d5cfc3" stroke="#20262c" stroke-width="0.9"/>`);
@@ -1494,7 +1580,7 @@ function cliffSVG() {
   LB(95, 438, 48, 448, '岩内观测层 (435–440 m)', 'xs b halo end');
   LB(95, 429, 44, 430, '双层钢化玻璃幕墙主厅 (423–435 m)', 'xs b halo end');
   LB(96, 423, 38, 414, '主厅观海阳台 +423 m（外挑 2 m）', 'xs b halo end');
-  LB(149, 436, 205, 448, '山体后通道: 穿出刀刃山脊直望火山口与镜湖', 'xs b halo');
+  LB(149, 435, 205, 448, '山体后通道: 穿出刀刃山脊直望火山口与镜湖', 'xs b halo');
   LB(155, 417, 210, 416, '底部重工实验舱 (向岩内纵深 60 m)', 'xs b halo');
   LB(143, 305, 195, 305, '垂直联络竖井 (下通机库与内港)', 'xs whalo');
   LB(34, 95, -8, 114, '南水平弹射口 +95 m (战机贴海冲出)', 's b halo end');
@@ -1537,7 +1623,7 @@ for (const [name, svg] of figs) writeFileSync(join(here, `${name}.svg`), svg, 'u
 
 const html = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>岛屿基地草图 · 3.2 定稿版</title>
+<title>岛屿基地草图 · 3.3 定稿版</title>
 <style>
   body{margin:0;background:#e9eef2;color:#1d2832;font-family:${FONT};line-height:1.65}
   header{background:#141e27;color:#eef4f8;padding:20px 18px;border-bottom:1px solid #2b3c4a}
@@ -1553,15 +1639,15 @@ const html = `<!doctype html>
 </style></head><body>
 <header><div class="wrap">
   <div>
-    <h1>岛屿基地工程草图 · 3.2 定稿版</h1>
-    <p>依据《岛屿设定.md》3.2 同一套几何地形与洞室参数计算生成(平面图 · 南立面与崖宅详图 · 南北纵剖面 · 主崖 1:1 剖面)。</p>
+    <h1>岛屿基地工程草图 · 3.3 定稿版</h1>
+    <p>依据《岛屿设定.md》3.3 同一套几何地形与洞室参数计算生成(平面图 · 南立面与崖宅详图 · 南北纵剖面 · 主崖 1:1 剖面)。</p>
   </div>
   <a class="btn" href="/">进入三维漫游 →</a>
 </div></header>
 <script>try{if(window.parent!==window&&window.frameElement)document.querySelector('header').style.display='none';}catch(e){}</script>
 <main>
 <figure>${figs[0][1]}<figcaption><b>图 1 · 平面总图</b>: 向北开口的马蹄形破火山口主岛与东屿(合计约 ${area.toFixed(1)} km²); 北岸为黑色火山砾滩峡湾(黑砾湾)与百米悬瀑, 镜湖(138m)与风草甸(165m)深锁于刀刃山脊巨碗内, 唯一地面营区“岩隙营房”隐于镜湖西侧背风岩壁褶皱。</figcaption></figure>
-<figure>${figs[1][1]}<figcaption><b>图 2 · 南立面图与崖宅 1:1 正立面</b>: 上图展现 460 米主崖岬、外海 260 米南剑峰与一线天海蚀拱门的高耸剪影; 下图为 3.2 定稿崖宅(+412~+440m, 宽 34m × 高 28m): 双层玻璃幕墙与崖面齐平，仅主厅阳台外挑，下方另设内凹飞行器出口。</figcaption></figure>
+<figure>${figs[1][1]}<figcaption><b>图 2 · 南立面图与崖宅 1:1 正立面</b>: 上图展现 460 米主崖岬、外海 260 米南剑峰与一线天海蚀拱门的高耸剪影; 下图为 3.3 定稿崖宅(+412~+440m, 宽 34m × 高 28m): 双层玻璃幕墙与崖面齐平，仅主厅阳台外挑，下方另设内凹飞行器出口。</figcaption></figure>
 <figure>${figs[2][1]}<figcaption><b>图 3 · 南北纵剖面 B–B′</b>: 自南太平洋深潜崖穿过 460 米刀刃主脊、风草甸、镜湖至黑砾湾; 基核整体防护壳体向下延伸至 −670 米, 内部错落排布机库洞厅(+70~+115m)、潜艇内港(−95~+25m)、工坊、聚变堆(−320m)、AI 中枢与三层八舱段末日地下城(−535~−440m)。</figcaption></figure>
 <figure>${figs[3][1]}<figcaption><b>图 4 · 主崖与崖宅 1:1 真实比例剖面</b>: 水平与垂直严格等比例。崖宅自崖顶肩部垂降嵌于上层柱状玄武岩槽, 底缘在 +412 米干净收束锚入绝壁, 下方留有整整四百米纯粹自然绝壁; 顶层后廊直接穿出狭窄刀刃山脊俯瞰火山口与镜湖。</figcaption></figure>
 </main></body></html>`;
@@ -1628,7 +1714,7 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
   const meadM = scanMask(meadowPts.map(toPx3), G.nx, G.ny);
   const isletM = scanMask(isletPts.map(toPx3), G.nx, G.ny);
 
-  // mat 编码: 0 海底, 1 云雾林, 2 火山灰草甸(风草甸), 3 黑色火山砾滩(黑砾湾), 7 帘瀑西侧火山砂小沙滩, 4 玄武岩绝壁/尖塔, 5 镜湖湖底, 6 水下暗礁盘
+  // mat 编码: 0 海底, 1 云雾林, 2 镜湖湿润湖滨草岸, 3 黑色火山砾滩(黑砾湾), 7 帘瀑西侧白沙滩, 4 玄武岩绝壁/尖塔, 5 镜湖湖底, 6 水下暗礁盘
   const zf = new Float32Array(N), mat = new Uint8Array(N);
   for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
     const x = G.x0 + i * G.step, y = G.y0 + j * G.step, idx = j * G.nx + i;
@@ -1653,28 +1739,37 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
         const [dd, qx, qy] = dSeg(segAll, x, y);
         const localCrest = Math.max(sCr(x, y), 25);
         const hc = Math.max(localCrest, H(qx, qy), z);
-        // 沿岸线起伏的崖面:扶壁向海凸出、冲沟向内凹进;崖宅一带保持原样
-        const calm = sstep(0.09, 0.17, Math.hypot(qx - villaCoast[0], qy - villaCoast[1]));
-        const buttress = fbm(qx * 15 + 3.1, qy * 15 - 5.2, 3, 1301);
-        const couloir = Math.max(0, ridged(qx * 31 + 1.7, qy * 31 - 0.6, 2, 1311) - 0.72) / 0.28;
-        const spanM = clamp(hc / top, 0.32, 1.0) * 124 * (1 + calm * (0.42 * buttress + 0.75 * couloir));
+        // 沿岸线柔和起伏的火山绝壁：主崖崖宅段保持陡峭平直，两侧放宽坡度并柔和过渡向山脊
+        const calm = sstep(0.09, 0.20, Math.hypot(qx - villaCoast[0], qy - villaCoast[1]));
+        const buttress = fbm(qx * 5.2 + 3.1, qy * 5.2 - 5.2, 3, 1301);
+        const couloir = Math.max(0, ridged(qx * 11 + 1.7, qy * 11 - 0.6, 2, 1311) - 0.72) / 0.28;
+        const baseSpan = lerp(124, 210, calm);
+        const spanM = clamp(hc / top, 0.42, 1.0) * baseSpan * (1 + calm * (0.22 * buttress + 0.24 * couloir));
         const se = (dd * 1000 * 124) / spanM;
         if (se < 124) {
-          // Preserve the villa's surveyed anchor profile, then blend into an
-          // unbroken coastal face shaped by the local buttresses and ravines.
           const t = se / 124;
-          const coastalRise = t*t*(3-2*t);
-          z = Math.max(0.8, hc * lerp(lerpLine(HF, se)/top, coastalRise, calm));
-          m = 4;
-          // 块状节理的细碎起伏
-          z += (2.0 + 2.6 * calm) * (ridged(x * 75, y * 75, 2, 991) - 0.4) * Math.min(1, z / 12);
+          // 下部陡峭黑岩海蚀崖 + 上部自然圆润收向山脊肩部，避免“切蛋糕直墙”
+          const coastalRise = Math.pow(t, 0.68) * (0.72 + 0.28 * (t * t * (3 - 2 * t)));
+          z = Math.max(0.8, hc * lerp(lerpLine(HF, se) / top, coastalRise, calm));
+          if (t < 0.76 || z > 275) m = 4;
+          // 温和的玄武岩节理起伏（去高频锯齿尖刺）
+          z += (1.2 + 1.4 * calm) * (fbm(x * 24, y * 24, 2, 991) - 0.45) * Math.min(1, z / 18);
           z = Math.max(0.8, z);
-        } else if (se < 250) {
-          const ridgeTop = Math.max(z, hc * 0.97);
-          z = lerp(ridgeTop, z, sstep(124, 250, se));
+        } else if (se < 270) {
+          const ridgeTop = Math.max(z, hc * 0.96);
+          z = lerp(ridgeTop, z, sstep(124, 270, se));
         }
       }
-      if (meadM[idx]) {
+      // 方案 C：取消孤立大块风草甸，仅在镜湖平缓岸线与入湖溪口保留 10–25m 宽的自然湿润湖滨草岸 (mat=2)
+      const nearLakeBox = Math.abs(x - LAKE.x) < 0.34 && Math.abs(y - LAKE.y) < 0.25;
+      let onLakesideGrass = false;
+      if (nearLakeBox && z >= lakeLevel - 0.5 && z <= lakeLevel + 7.5) {
+        const dLakeM = Math.sqrt(dist2Pts(lakePts, x, y)) * 1000;
+        const dFeederM = Math.min(...feederPts.map(fd => distPolyLine(fd, x, y))) * 1000;
+        const shoreW = 13 + 11 * fbm(x * 18 + 1.3, y * 18 - 2.1, 2, 1611) + (dFeederM < 32 ? 8 * (1 - dFeederM / 32) : 0);
+        if (dLakeM <= shoreW) onLakesideGrass = true;
+      }
+      if (onLakesideGrass) {
         m = 2;
       } else if (sBe(x, y) < 0.055 && z < 12) {
         // 黑砾湾黑色火山砾滩平缓入水
@@ -1712,10 +1807,13 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
         let zs = dSea < shelfW
           ? -(2 + (-edgeZ - 2) * Math.pow(dSea / shelfW, 1.25)) - 1.6 * Math.abs(vnoise(x * 120, y * 120, 1207))
           : edgeZ + lerpLine(APRON, -(dSea - shelfW));
-        // 南剑峰脚下的残留岩台
-        const dSword = Math.hypot(x - SWORD_PEAK.x, y - SWORD_PEAK.y);
-        zs = Math.max(zs, -22 - 260 * sstep(0.10, 0.34, dSword));
         z = Math.max(-800, lerp(zs, deep, plunge));
+        // 南剑峰脚下的独立水下残留岩台（水深约 22 米，沿剑峰长轴呈椭圆形，避免被主崖深潜崖掩膜拉偏）
+        const dxS = x - SWORD_PEAK.x, dyS = y - SWORD_PEAK.y;
+        const cs = Math.cos(SWORD_PEAK.rot), ss = Math.sin(SWORD_PEAK.rot);
+        const su = dxS * cs + dyS * ss, sv = -dxS * ss + dyS * cs;
+        const dSword = Math.hypot(su / 0.21, sv / 0.095);
+        if (dSword < 2.0) z = Math.max(z, -22 - 380 * sstep(1.0, 2.0, dSword));
       }
       m = 0;
     }
@@ -1723,8 +1821,8 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
       // 岩槛约束湖岸，唯一低口沿白水河贯通。
       if (Math.abs(x - LAKE.x) < 0.32 && Math.abs(y - LAKE.y) < 0.22 &&
           dist2Pts(lakePts, x, y) < 0.04 ** 2) z = Math.max(z, lakeLevel + 1.2);
-      z = riverbed(x, y, z);
-      if (x > -0.20 && x < 0.14 && y > -0.02 && y < 0.45 && distPolyLine(riverPts, x, y) < 0.018) m = 4;
+      z = erosionRiverbed(x, y, z);
+      if (x > -0.20 && x < 0.14 && y > -0.02 && y < 0.45 && distPolyLine(erosionRiverPts, x, y) < 0.018) m = 4;
     }
     zf[idx] = z;
     mat[idx] = m;
@@ -1736,7 +1834,7 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
     const emask = new Float32Array(N);
     for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
       const idx = j * G.nx + i;
-      if (!(land[idx] || isletM[idx]) || lakeM[idx] || meadM[idx] || zf[idx] < 1) continue;
+      if (!(land[idx] || isletM[idx]) || lakeM[idx] || zf[idx] < 1) continue;
       const x = G.x0 + i * G.step, y = G.y0 + j * G.step;
       const bowlR = Math.hypot((x + 0.34) / 0.62, (y + 0.28) / 0.76);
       let w = sstep(1.05, 1.28, bowlR);
@@ -1824,6 +1922,24 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
     ds.sort((a, b) => a - b);
     const pct = p => ds[Math.floor(p * (ds.length - 1))].toFixed(1);
     console.log(`水力侵蚀: 作用于 ${landN} 格, 平均下切 ${(cut / landN).toFixed(2)} m, 平均沉积 ${(fill / landN).toFixed(2)} m, 最深下切 ${maxCut.toFixed(1)} m | 分位 1%=${pct(0.01)} 10%=${pct(0.1)} 50%=${pct(0.5)} 90%=${pct(0.9)} 99%=${pct(0.99)}`);
+
+    // 清理侵蚀掩膜边界产生的孤立尖刺毛刺（严格避开瀑唇、白沙滩与崖宅预留段）
+    for (let pass = 0; pass < 2; pass++) {
+      const snap = Float32Array.from(zf);
+      for (let j = 2; j < G.ny - 2; j++) for (let i = 2; i < G.nx - 2; i++) {
+        const k = j * G.nx + i;
+        if (!land[k] || lakeM[k] || meadM[k]) continue;
+        const x = G.x0 + i * G.step, y = G.y0 + j * G.step;
+        if (Math.hypot(x - villaCoast[0], y - villaCoast[1]) < 0.16) continue;
+        if (Math.hypot(x - PLUNGE.x, y - PLUNGE.y) < 0.14) continue;
+        const nb = [snap[k - 1], snap[k + 1], snap[k - G.nx], snap[k + G.nx]];
+        const avg = (nb[0] + nb[1] + nb[2] + nb[3]) * 0.25;
+        const maxNb = Math.max(...nb);
+        if (snap[k] - maxNb > 6.5 || snap[k] - avg > 14.0) {
+          zf[k] = avg + (snap[k] - avg) * 0.28;
+        }
+      }
+    }
   }
 
   // 水下暗礁盘与共生礁头抬升至水面下 -0.8 ~ -2.8m
@@ -1842,11 +1958,21 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
   // 在侵蚀与暗礁之后应用最终剖面，保证低潮线、碰撞高度与材质完全一致。
   for (let j = 0; j < G.ny; j++) for (let i = 0; i < G.nx; i++) {
     const k = j * G.nx + i, x = G.x0 + i * G.step, y = G.y0 + j * G.step;
+    const cliff = land[k] && eastBankCliff(x, y, zf[k]);
+    if (cliff) {
+      zf[k] = cliff.height;
+      mat[k] = cliff.material;
+    }
     const b = beachProfile(x, y);
     if (b.weight > 0) {
       zf[k] = sculptBeach(x, y, zf[k]);
       if (b.sand > 0.45 && zf[k] > -1.5 && zf[k] < 8) mat[k] = 7;
       else if (b.weight > 0.8 && zf[k] < 0) mat[k] = 0;
+    }
+    const carved = inletHeight(x, y, zf[k]);
+    if (carved !== zf[k]) {
+      zf[k] = carved;
+      mat[k] = carved < 0 ? 0 : 4;
     }
   }
   const hm = new Int16Array(N);
@@ -1885,14 +2011,14 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
   }
 
   const meta = {
-    version: '3.2',
+    version: '3.3',
     grid: G,
     heightScale: 0.1,
     lakeLevel,
     meadowLevel,
     peak: { x: r4(G.x0 + summitIndex % G.nx * G.step), y: r4(G.y0 + Math.floor(summitIndex / G.nx) * G.step), h: Math.round(zmax) },
     lake: lakePts.map(P2),
-    meadow: meadowPts.map(P2),
+    meadow: [],
     river: riverPts.map(P2),
     riverProfile, lipIndex,
     falls: FALLS,
@@ -1923,18 +2049,17 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
     islet: ISLET,
     labels: [
       ...summits.map(({name, x, y, h}) => [`${name} ${h}m`, x, y]),
-      ['风草甸 165m', MEADOW.x, MEADOW.y],
       ['镜湖 138m', LAKE.x, LAKE.y],
       ['帘瀑', FALLS[0], FALLS[1]],
       ['黑砾湾', 0.02, 0.50],
       ['岩隙营房', CAMPS[0][0], CAMPS[0][1]],
-      ['东屿主峰 281m', 1.648, 0.125],
+      ['东屿主峰 260m', 1.655, 0.181],
       ['一线天水道', 1.46, 0.24],
       ['海蚀拱门', (SEA_ARCH.a[0] + SEA_ARCH.b[0]) / 2, SEA_ARCH.a[1]],
       ['南剑峰 260m', SWORD_PEAK.x, SWORD_PEAK.y],
       ['东峡谷', 1.14, -0.52],
-      ['西裂谷', -0.82, -0.72],
-      ['裂湾', 0.22, -0.76],
+      ['西裂谷', -0.84, -0.96],
+      ['裂湾', 0.24, -0.92],
       ['北发射口 +90m', P2(TUNNELS[2].exit)[0], P2(TUNNELS[2].exit)[1]],
       ['东礁滩', 1.42, -0.10],
       ['西礁滩', -1.88, -0.05],
@@ -1942,5 +2067,5 @@ console.log(`西闸门 (${f1(WEST_GATE.pos[0])},${f1(WEST_GATE.pos[1])}) ${WEST_
     ],
   };
   writeFileSync(join(out3, 'island.json'), JSON.stringify(meta), 'utf8');
-  console.log(`三维数据 (3.2): ${G.nx}×${G.ny} 网格, 高程 ${zmin.toFixed(0)} ~ ${zmax.toFixed(0)} m, 崖宅槽距 ${villaSlotDist} m → 三维/data/`);
+  console.log(`三维数据 (3.3): ${G.nx}×${G.ny} 网格, 高程 ${zmin.toFixed(0)} ~ ${zmax.toFixed(0)} m, 崖宅槽距 ${villaSlotDist} m → 三维/data/`);
 }

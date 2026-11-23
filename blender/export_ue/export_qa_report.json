@@ -1,0 +1,528 @@
+{
+  "ok": true,
+  "stage": 5,
+  "export_dir": "C:\\Users\\wsbyb\\OneDrive\\Dokumen\\Projects\\A new world\\blender\\export_ue",
+  "landscape": {
+    "version": "3.3",
+    "heightmap_file": "T_Island_Heightmap_16bit.png",
+    "resolution": [
+      1009,
+      1009
+    ],
+    "ue5_landscape_config": {
+      "section_size": "63x63 Quads",
+      "sections_per_component": "1x1 Section",
+      "number_of_components": "16x16",
+      "overall_resolution": "1009x1009",
+      "location_cm": [
+        0.0,
+        0.0,
+        -16840.816
+      ],
+      "rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        500.0,
+        500.0,
+        246.71556
+      ]
+    },
+    "world_bounds_m": {
+      "x_min": -2520.0,
+      "x_max": 2520.0,
+      "y_min": -2520.0,
+      "y_max": 2520.0,
+      "z_min": -800.0,
+      "z_max": 463.184,
+      "z_range": 1263.184,
+      "sea_level_z_m": 0.0,
+      "sea_level_uint16": 41505
+    },
+    "roundtrip_qa": {
+      "max_error_m": 0.00978,
+      "rmse_m": 0.00507,
+      "pass": true
+    },
+    "axis_note": "Row 0 of heightmap/weightmaps = North (+Y Blender = -Y UE5); Row 1008 = South (-Y Blender = +Y UE5); Col 0 = West (-X); Col 1008 = East (+X).",
+    "weightmaps": [
+      "Weightmap_Forest.png",
+      "Weightmap_LakesideGrass.png",
+      "Weightmap_Basalt.png",
+      "Weightmap_WhiteSand.png",
+      "Weightmap_Seabed.png",
+      "T_Landscape_Splat_RGBA.png"
+    ]
+  },
+  "meshes_exported_count": 28,
+  "meshes": {
+    "SM_Island_Terrain_Nanite.fbx": {
+      "file": "SM_Island_Terrain_Nanite.fbx",
+      "size_kb": 68308.0,
+      "expected_dims_m": [
+        4949.0,
+        4347.0,
+        1263.2
+      ],
+      "zero_origin": false
+    },
+    "SM_Hero_SouthSwordPeak.fbx": {
+      "file": "SM_Hero_SouthSwordPeak.fbx",
+      "size_kb": 1719.1,
+      "expected_dims_m": [
+        548.988,
+        427.912,
+        363.934
+      ],
+      "zero_origin": false
+    },
+    "SM_Hero_SeaArch.fbx": {
+      "file": "SM_Hero_SeaArch.fbx",
+      "size_kb": 958.1,
+      "expected_dims_m": [
+        252.078,
+        39.965,
+        258.065
+      ],
+      "zero_origin": false
+    },
+    "SM_Hero_Spire_MainCliff.fbx": {
+      "file": "SM_Hero_Spire_MainCliff.fbx",
+      "size_kb": 158.4,
+      "expected_dims_m": [
+        26.639,
+        23.566,
+        28.55
+      ],
+      "zero_origin": false
+    },
+    "SM_Hero_Spire_West.fbx": {
+      "file": "SM_Hero_Spire_West.fbx",
+      "size_kb": 158.4,
+      "expected_dims_m": [
+        27.477,
+        24.373,
+        28.85
+      ],
+      "zero_origin": false
+    },
+    "SM_Hero_Spire_East.fbx": {
+      "file": "SM_Hero_Spire_East.fbx",
+      "size_kb": 158.8,
+      "expected_dims_m": [
+        26.742,
+        19.848,
+        38.85
+      ],
+      "zero_origin": false
+    },
+    "SM_SeaStack_01.fbx": {
+      "file": "SM_SeaStack_01.fbx",
+      "size_kb": 106.1,
+      "expected_dims_m": [
+        28.978,
+        36.042,
+        108.2
+      ],
+      "zero_origin": false
+    },
+    "SM_SeaStack_02.fbx": {
+      "file": "SM_SeaStack_02.fbx",
+      "size_kb": 105.8,
+      "expected_dims_m": [
+        30.532,
+        26.36,
+        241.114
+      ],
+      "zero_origin": false
+    },
+    "SM_SeaStack_03.fbx": {
+      "file": "SM_SeaStack_03.fbx",
+      "size_kb": 106.0,
+      "expected_dims_m": [
+        33.826,
+        30.643,
+        180.743
+      ],
+      "zero_origin": false
+    },
+    "SM_SeaStack_04.fbx": {
+      "file": "SM_SeaStack_04.fbx",
+      "size_kb": 105.5,
+      "expected_dims_m": [
+        27.549,
+        28.052,
+        204.229
+      ],
+      "zero_origin": false
+    },
+    "SM_SeaStack_05.fbx": {
+      "file": "SM_SeaStack_05.fbx",
+      "size_kb": 106.5,
+      "expected_dims_m": [
+        33.641,
+        32.164,
+        102.2
+      ],
+      "zero_origin": false
+    },
+    "SM_Buoy_Prototype.fbx": {
+      "file": "SM_Buoy_Prototype.fbx",
+      "size_kb": 26.7,
+      "expected_dims_m": [
+        12.116,
+        10.268,
+        39.816
+      ],
+      "zero_origin": true
+    },
+    "SM_Rock_PH_Boulder01.fbx": {
+      "file": "SM_Rock_PH_Boulder01.fbx",
+      "size_kb": 335.3,
+      "expected_dims_m": [
+        1.284,
+        1.831,
+        0.996
+      ],
+      "zero_origin": true
+    },
+    "SM_Rock_PH_CoastReef05.fbx": {
+      "file": "SM_Rock_PH_CoastReef05.fbx",
+      "size_kb": 504.3,
+      "expected_dims_m": [
+        3.033,
+        2.817,
+        0.991
+      ],
+      "zero_origin": true
+    },
+    "SM_Rock_PH_Boulder03.fbx": {
+      "file": "SM_Rock_PH_Boulder03.fbx",
+      "size_kb": 251.3,
+      "expected_dims_m": [
+        2.403,
+        3.066,
+        1.469
+      ],
+      "zero_origin": true
+    },
+    "SM_Rock_PH_CliffOutcrop.fbx": {
+      "file": "SM_Rock_PH_CliffOutcrop.fbx",
+      "size_kb": 734.4,
+      "expected_dims_m": [
+        10.21,
+        5.244,
+        10.514
+      ],
+      "zero_origin": true
+    },
+    "SM_Water_Ocean.fbx": {
+      "file": "SM_Water_Ocean.fbx",
+      "size_kb": 892.5,
+      "expected_dims_m": [
+        22000.0,
+        22000.0,
+        0.0
+      ],
+      "zero_origin": false
+    },
+    "SM_Water_MirrorLake.fbx": {
+      "file": "SM_Water_MirrorLake.fbx",
+      "size_kb": 19.8,
+      "expected_dims_m": [
+        501.5,
+        328.1,
+        0.0
+      ],
+      "zero_origin": false
+    },
+    "SM_Water_WhitewaterRiver.fbx": {
+      "file": "SM_Water_WhitewaterRiver.fbx",
+      "size_kb": 22.3,
+      "expected_dims_m": [
+        262.024,
+        204.885,
+        9.0
+      ],
+      "zero_origin": false
+    },
+    "SM_Water_CurtainFalls.fbx": {
+      "file": "SM_Water_CurtainFalls.fbx",
+      "size_kb": 31.6,
+      "expected_dims_m": [
+        16.415,
+        11.88,
+        129.0
+      ],
+      "zero_origin": false
+    },
+    "SM_Water_PlungeFoam.fbx": {
+      "file": "SM_Water_PlungeFoam.fbx",
+      "size_kb": 17.0,
+      "expected_dims_m": [
+        36.0,
+        32.0,
+        0.0
+      ],
+      "zero_origin": false
+    },
+    "SM_Water_BeachSurf.fbx": {
+      "file": "SM_Water_BeachSurf.fbx",
+      "size_kb": 27.9,
+      "expected_dims_m": [
+        325.0,
+        110.5,
+        0.0
+      ],
+      "zero_origin": false
+    },
+    "SM_Tree_CloudForest_01.fbx": {
+      "file": "SM_Tree_CloudForest_01.fbx",
+      "size_kb": 4354.9,
+      "expected_dims_m": [
+        13.793,
+        14.0,
+        13.0
+      ],
+      "zero_origin": true
+    },
+    "SM_Tree_CloudForest_02.fbx": {
+      "file": "SM_Tree_CloudForest_02.fbx",
+      "size_kb": 4353.8,
+      "expected_dims_m": [
+        15.467,
+        14.683,
+        11.18
+      ],
+      "zero_origin": true
+    },
+    "SM_Tree_TropicalPalm_01.fbx": {
+      "file": "SM_Tree_TropicalPalm_01.fbx",
+      "size_kb": 45.6,
+      "expected_dims_m": [
+        9.429,
+        9.671,
+        12.649
+      ],
+      "zero_origin": true
+    },
+    "SM_Tree_Fern_01.fbx": {
+      "file": "SM_Tree_Fern_01.fbx",
+      "size_kb": 35.4,
+      "expected_dims_m": [
+        6.558,
+        6.727,
+        5.251
+      ],
+      "zero_origin": true
+    },
+    "SM_Bush_Tropical_01.fbx": {
+      "file": "SM_Bush_Tropical_01.fbx",
+      "size_kb": 31.6,
+      "expected_dims_m": [
+        5.137,
+        5.168,
+        1.147
+      ],
+      "zero_origin": true
+    },
+    "SM_Grass_Meadow_01.fbx": {
+      "file": "SM_Grass_Meadow_01.fbx",
+      "size_kb": 21.7,
+      "expected_dims_m": [
+        1.843,
+        1.824,
+        1.1
+      ],
+      "zero_origin": true
+    }
+  },
+  "textures_exported_count": 31,
+  "textures": [
+    "T_Basalt_DarkRock_BC.png",
+    "T_Basalt_DarkRock_N_DX.png",
+    "T_Basalt_DarkRock_ORM.png",
+    "T_Basalt_DarkRock02_BC.png",
+    "T_Basalt_DarkRock02_N_DX.png",
+    "T_Basalt_DarkRock02_ORM.png",
+    "T_Basalt_LichenRock_BC.png",
+    "T_Basalt_LichenRock_N_DX.png",
+    "T_Basalt_LichenRock_ORM.png",
+    "T_Basalt_AerialRocks04_BC.png",
+    "T_Basalt_AerialRocks04_N_DX.png",
+    "T_Basalt_AerialRocks04_ORM.png",
+    "T_PH_Boulder01_BC.png",
+    "T_PH_Boulder01_N_DX.png",
+    "T_PH_Boulder01_ORM.png",
+    "T_PH_CoastReef05_BC.png",
+    "T_PH_CoastReef05_N_DX.png",
+    "T_PH_CoastReef05_ORM.png",
+    "T_PH_Boulder03_BC.png",
+    "T_PH_Boulder03_N_DX.png",
+    "T_PH_Boulder03_ORM.png",
+    "T_PH_CliffOutcrop_BC.png",
+    "T_PH_CliffOutcrop_N_DX.png",
+    "T_PH_CliffOutcrop_ORM.png",
+    "T_Terrain_WhiteSand_BC.png",
+    "T_Terrain_WhiteSand_N_DX.png",
+    "T_Terrain_WhiteSand_ORM.png",
+    "T_Terrain_ForestGround_BC.png",
+    "T_Terrain_ForestGround_N_DX.png",
+    "T_Terrain_ForestGround_ORM.png",
+    "T_Sky_IslandDay.hdr"
+  ],
+  "anchors_json": "C:\\Users\\wsbyb\\OneDrive\\Dokumen\\Projects\\A new world\\blender\\export_ue\\anchors_ue.json",
+  "ue5_python_spawner": "C:\\Users\\wsbyb\\OneDrive\\Dokumen\\Projects\\A new world\\blender\\export_ue\\ue5_import_instances.py",
+  "fbx_roundtrip_pass": true,
+  "fbx_roundtrip_qa": {
+    "SM_Island_Terrain_Nanite.fbx": {
+      "pass": true,
+      "expected_dims_m": [
+        4949.0,
+        4347.0,
+        1263.2
+      ],
+      "roundtrip_dims_m": [
+        4949.0,
+        4347.0,
+        1263.2
+      ],
+      "max_rel_err": 0.0,
+      "tris": 878094,
+      "uv_layers": 1,
+      "scale_on_import": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "SM_Hero_SouthSwordPeak.fbx": {
+      "pass": true,
+      "expected_dims_m": [
+        548.988,
+        427.912,
+        363.934
+      ],
+      "roundtrip_dims_m": [
+        548.988,
+        427.912,
+        363.934
+      ],
+      "max_rel_err": 0.0,
+      "tris": 23012,
+      "uv_layers": 1,
+      "scale_on_import": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "SM_Hero_SeaArch.fbx": {
+      "pass": true,
+      "expected_dims_m": [
+        252.078,
+        39.965,
+        258.065
+      ],
+      "roundtrip_dims_m": [
+        252.078,
+        39.965,
+        258.065
+      ],
+      "max_rel_err": 0.0,
+      "tris": 14108,
+      "uv_layers": 1,
+      "scale_on_import": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "SM_Rock_PH_Boulder01.fbx": {
+      "pass": true,
+      "expected_dims_m": [
+        1.284,
+        1.831,
+        0.996
+      ],
+      "roundtrip_dims_m": [
+        1.284,
+        1.831,
+        0.996
+      ],
+      "max_rel_err": 0.0,
+      "tris": 3800,
+      "uv_layers": 1,
+      "scale_on_import": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "SM_Rock_PH_CliffOutcrop.fbx": {
+      "pass": true,
+      "expected_dims_m": [
+        10.21,
+        5.244,
+        10.514
+      ],
+      "roundtrip_dims_m": [
+        10.21,
+        5.244,
+        10.514
+      ],
+      "max_rel_err": 0.0,
+      "tris": 8500,
+      "uv_layers": 1,
+      "scale_on_import": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "SM_Tree_TropicalPalm_01.fbx": {
+      "pass": true,
+      "expected_dims_m": [
+        9.429,
+        9.671,
+        12.649
+      ],
+      "roundtrip_dims_m": [
+        9.429,
+        9.671,
+        12.649
+      ],
+      "max_rel_err": 0.0,
+      "tris": 472,
+      "uv_layers": 1,
+      "scale_on_import": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "SM_Water_CurtainFalls.fbx": {
+      "pass": true,
+      "expected_dims_m": [
+        16.415,
+        11.88,
+        129.0
+      ],
+      "roundtrip_dims_m": [
+        16.415,
+        11.88,
+        129.0
+      ],
+      "max_rel_err": 0.0,
+      "tris": 360,
+      "uv_layers": 1,
+      "scale_on_import": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  }
+}
